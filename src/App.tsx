@@ -3,6 +3,7 @@ import FacebookPost, { type CTA, type MediaItem, type Mode } from "./components/
 import EditorPanel from "./components/EditorPanel";
 import MobilePreview from "./components/MobilePreview";
 
+// A single post's shape
 type Post = {
   author: string;
   timestamp: string;
@@ -15,6 +16,7 @@ type Post = {
   linkHeadline: string;
   linkSubhead: string;
   cta: CTA;
+  videoMuted: boolean;
 };
 
 type View = "editor" | "desktop" | "mobile";
@@ -31,6 +33,7 @@ const createEmptyPost = (): Post => ({
   linkHeadline: "",
   linkSubhead: "",
   cta: "Learn More",
+  videoMuted: true,
 });
 
 const App: React.FC = () => {
@@ -41,10 +44,10 @@ const App: React.FC = () => {
   // View toggle
   const [view, setView] = useState<View>("editor");
 
-  // Current post
+  // Convenience accessors for current post
   const p = posts[current];
 
-  // Update helper
+  // Helpers to update current post fields immutably
   const update = useCallback(
     (key: keyof Post, value: Post[keyof Post]) => {
       setPosts((prev) => {
@@ -66,39 +69,32 @@ const App: React.FC = () => {
   const setLinkSubhead = (v: string) => update("linkSubhead", v);
   const setCta = (v: CTA) => update("cta", v);
   const setSlideIndex = (i: number) => update("slideIndex", i);
+  const setVideoMuted = (v: boolean) => update("videoMuted", v);
 
-  // Add files to current post
+  // Media handlers (operate on current post)
   const onAddFiles = useCallback(
     async (files: FileList | null) => {
       if (!files) return;
       const items: MediaItem[] = [];
-
       for (const f of Array.from(files)) {
         const isVideo = f.type.startsWith("video");
         const isImage = f.type.startsWith("image") || /(png|jpe?g|webp|gif|bmp)$/i.test(f.name);
         if (!isImage && !isVideo) continue;
-
         const { fileToDataURL } = await import("./lib/utils");
         const url = isImage ? await fileToDataURL(f) : URL.createObjectURL(f);
         items.push({ url, type: isImage ? "image" : "video", name: f.name, linkHeadline: "" });
       }
-
       if (!items.length) return;
-
       setPosts((prev) => {
         const arr = [...prev];
         const post = arr[current];
-
         const nextMedia = (() => {
           if (post.mode === "static") {
-            // keep only the first image
             const firstImg = [...items, ...post.media].find((m) => m.type === "image");
             return firstImg ? [firstImg] : post.media;
           }
-          // carousel: append
           return [...post.media, ...items];
         })();
-
         arr[current] = { ...post, media: nextMedia };
         return arr;
       });
@@ -127,12 +123,9 @@ const App: React.FC = () => {
         const a = [...post.media];
         const j = i + dir;
         if (j < 0 || j >= a.length) return prev;
-
-        // JS swap (no Python tuple swap)
         const tmp = a[i];
         a[i] = a[j];
         a[j] = tmp;
-
         arr[current] = { ...post, media: a };
         return arr;
       });
@@ -155,7 +148,7 @@ const App: React.FC = () => {
     [current]
   );
 
-  // Carousel controls
+  // Carousel controls for current post
   const nextSlide = useCallback(() => {
     const len = p?.media.length || 1;
     setSlideIndex(((p?.slideIndex || 0) + 1) % len);
@@ -166,7 +159,7 @@ const App: React.FC = () => {
     setSlideIndex(((p?.slideIndex || 0) - 1 + len) % len);
   }, [p?.media.length, p?.slideIndex]);
 
-  // Props for current post
+  // Shared props for current post
   const shared = useMemo(
     () => ({
       author: p.author,
@@ -180,6 +173,7 @@ const App: React.FC = () => {
       linkHeadline: p.linkHeadline,
       linkSubhead: p.linkSubhead,
       cta: p.cta,
+      videoMuted: p.videoMuted,
     }),
     [p]
   );
@@ -189,13 +183,13 @@ const App: React.FC = () => {
     setPosts((prev) => [...prev, createEmptyPost()]);
     setCurrent((i) => i + 1);
   };
-
   const removePost = () => {
     setPosts((prev) => {
-      if (prev.length === 1) return prev;
-      return prev.filter((_, idx) => idx !== current);
+      if (prev.length === 1) return prev; // keep at least one
+      const arr = prev.filter((_, idx) => idx !== current);
+      return arr;
     });
-    setCurrent((i) => Math.max(0, Math.min(i, posts.length - 2)));
+    setCurrent((i) => Math.max(0, Math.min(i, posts.length - 2))); // shift index safely
   };
 
   return (
@@ -228,65 +222,72 @@ const App: React.FC = () => {
         </button>
       </div>
 
-      {/* Editor view */}
+      {/* Post selector + add/remove (Editor only) */}
       {view === "editor" && (
-        <>
-          <div className="mb-4 flex w-full max-w-6xl items-center justify-between">
-            <div className="flex flex-wrap items-center gap-2">
-              {posts.map((_, i) => (
-                <button
-                  key={i}
-                  onClick={() => setCurrent(i)}
-                  className={`rounded px-3 py-1 text-sm ${
-                    current === i ? "bg-gray-900 text-white" : "bg-gray-200"
-                  }`}
-                >
-                  Post {i + 1}
-                </button>
-              ))}
-            </div>
-            <div className="flex items-center gap-2">
-              <button className="rounded bg-green-600 px-3 py-1 text-sm text-white" onClick={addPost}>
-                + Add post
-              </button>
+        <div className="mb-4 flex w-full max-w-6xl items-center justify-between">
+          <div className="flex flex-wrap items-center gap-2">
+            {posts.map((_, i) => (
               <button
-                className="rounded bg-red-600 px-3 py-1 text-sm text-white disabled:opacity-50"
-                onClick={removePost}
-                disabled={posts.length === 1}
+                key={i}
+                onClick={() => setCurrent(i)}
+                className={`rounded px-3 py-1 text-sm ${
+                  current === i ? "bg-gray-900 text-white" : "bg-gray-200"
+                }`}
               >
-                − Remove
+                Post {i + 1}
               </button>
-            </div>
+            ))}
           </div>
-
-          <div className="grid w-full max-w-6xl grid-cols-1 gap-6 md:grid-cols-[340px,1fr]">
-            <EditorPanel
-              {...shared}
-              setAuthor={setAuthor}
-              setTimestamp={setTimestamp}
-              setCopy={setCopy}
-              setProfileUrl={setProfileUrl}
-              setMode={setMode}
-              setLinkUrl={setLinkUrl}
-              setLinkHeadline={setLinkHeadline}
-              setLinkSubhead={setLinkSubhead}
-              setCta={setCta}
-              onAddFiles={onAddFiles}
-              onRemoveAt={onRemoveAt}
-              onMove={onMove}
-              onEditCardHeadline={onEditCardHeadline}
-              setSlideIndex={setSlideIndex}
-            />
-            <div className="flex justify-center">
-              <div className="w-full max-w-[500px] rounded-xl border border-[#E4E6EB] bg-white shadow-sm">
-                <FacebookPost {...shared} nextSlide={nextSlide} prevSlide={prevSlide} />
-              </div>
-            </div>
+          <div className="flex items-center gap-2">
+            <button className="rounded bg-green-600 px-3 py-1 text-sm text-white" onClick={addPost}>
+              + Add post
+            </button>
+            <button
+              className="rounded bg-red-600 px-3 py-1 text-sm text-white disabled:opacity-50"
+              onClick={removePost}
+              disabled={posts.length === 1}
+            >
+              − Remove
+            </button>
           </div>
-        </>
+        </div>
       )}
 
-      {/* Desktop feed */}
+      {/* Editor view */}
+      {view === "editor" && (
+        <div className="grid w-full max-w-6xl grid-cols-1 gap-6 md:grid-cols-[340px,1fr]">
+          <EditorPanel
+            {...shared}
+            setAuthor={setAuthor}
+            setTimestamp={setTimestamp}
+            setCopy={setCopy}
+            setProfileUrl={setProfileUrl}
+            setMode={setMode}
+            setLinkUrl={setLinkUrl}
+            setLinkHeadline={setLinkHeadline}
+            setLinkSubhead={setLinkSubhead}
+            setCta={setCta}
+            setVideoMuted={setVideoMuted}
+            onAddFiles={onAddFiles}
+            onRemoveAt={onRemoveAt}
+            onMove={onMove}
+            onEditCardHeadline={onEditCardHeadline}
+            setSlideIndex={setSlideIndex}
+          />
+          <div className="flex justify-center">
+            <div className="w-full max-w-[500px] rounded-xl border border-[#E4E6EB] bg-white shadow-sm">
+              <FacebookPost
+                {...shared}
+                nextSlide={nextSlide}
+                prevSlide={prevSlide}
+                onToggleMute={() => setVideoMuted(!p.videoMuted)}
+              />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Desktop view: stack posts like feed */}
       {view === "desktop" && (
         <div className="flex w-full justify-center">
           <div className="flex w-full max-w-[600px] flex-col items-center gap-4">
@@ -307,6 +308,14 @@ const App: React.FC = () => {
                   linkHeadline={post.linkHeadline}
                   linkSubhead={post.linkSubhead}
                   cta={post.cta}
+                  videoMuted={post.videoMuted}
+                  onToggleMute={() =>
+                    setPosts((prev) => {
+                      const arr = [...prev];
+                      arr[idx] = { ...post, videoMuted: !post.videoMuted };
+                      return arr;
+                    })
+                  }
                   nextSlide={() =>
                     setPosts((prev) => {
                       const arr = [...prev];
@@ -332,7 +341,7 @@ const App: React.FC = () => {
         </div>
       )}
 
-      {/* Mobile feed in phone frame */}
+      {/* Mobile view: scrollable stack inside phone viewport */}
       {view === "mobile" && (
         <div className="flex w-full justify-center">
           <MobilePreview>
@@ -354,6 +363,14 @@ const App: React.FC = () => {
                     linkHeadline={post.linkHeadline}
                     linkSubhead={post.linkSubhead}
                     cta={post.cta}
+                    videoMuted={post.videoMuted}
+                    onToggleMute={() =>
+                      setPosts((prev) => {
+                        const arr = [...prev];
+                        arr[idx] = { ...post, videoMuted: !post.videoMuted };
+                        return arr;
+                      })
+                    }
                     nextSlide={() =>
                       setPosts((prev) => {
                         const arr = [...prev];

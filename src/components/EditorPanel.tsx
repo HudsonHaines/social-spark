@@ -14,6 +14,7 @@ export type EditorPanelProps = {
   linkHeadline: string;
   linkSubhead: string;
   cta: CTA;
+  videoMuted: boolean;
   setAuthor: (v: string) => void;
   setTimestamp: (v: string) => void;
   setCopy: (v: string) => void;
@@ -23,6 +24,7 @@ export type EditorPanelProps = {
   setLinkHeadline: (v: string) => void;
   setLinkSubhead: (v: string) => void;
   setCta: (v: CTA) => void;
+  setVideoMuted: (v: boolean) => void;
   onAddFiles: (files: FileList | null) => Promise<void> | void;
   onRemoveAt: (i: number) => void;
   onMove: (i: number, dir: -1 | 1) => void;
@@ -43,6 +45,7 @@ const EditorPanel: React.FC<EditorPanelProps> = (props) => {
     linkHeadline,
     linkSubhead,
     cta,
+    videoMuted,
     setAuthor,
     setTimestamp,
     setCopy,
@@ -52,6 +55,7 @@ const EditorPanel: React.FC<EditorPanelProps> = (props) => {
     setLinkHeadline,
     setLinkSubhead,
     setCta,
+    setVideoMuted,
     onAddFiles,
     onRemoveAt,
     onMove,
@@ -120,18 +124,35 @@ const EditorPanel: React.FC<EditorPanelProps> = (props) => {
         <span className="text-sm font-medium">Mode</span>
         <div className="flex items-center gap-2">
           <button
-            className={`rounded-xl px-3 py-1 text-sm ${mode === "static" ? "bg-gray-900 text-white" : "bg-gray-200"}`}
+            className={`rounded-xl px-3 py-1 text-sm ${
+              mode === "static" ? "bg-gray-900 text-white" : "bg-gray-200"
+            }`}
             onClick={() => setMode("static")}
           >
             Static
           </button>
           <button
-            className={`rounded-xl px-3 py-1 text-sm ${mode === "carousel" ? "bg-gray-900 text-white" : "bg-gray-200"}`}
+            className={`rounded-xl px-3 py-1 text-sm ${
+              mode === "carousel" ? "bg-gray-900 text-white" : "bg-gray-200"
+            }`}
             onClick={() => setMode("carousel")}
           >
-            Carousel
+            Carousel/Video
           </button>
         </div>
+      </div>
+
+      {/* Video defaults */}
+      <div className="mb-3 flex items-center gap-2">
+        <input
+          id="muteDefault"
+          type="checkbox"
+          checked={videoMuted}
+          onChange={(e) => setVideoMuted(e.target.checked)}
+        />
+        <label htmlFor="muteDefault" className="text-sm">
+          Mute video by default
+        </label>
       </div>
 
       {mode === "static" && (
@@ -168,9 +189,13 @@ const EditorPanel: React.FC<EditorPanelProps> = (props) => {
             value={cta}
             onChange={(e) => setCta(e.target.value as CTA)}
           >
-            {(["Shop Now","Learn More","Sign Up","Book Now","Contact Us","Download"] as CTA[]).map((opt) => (
-              <option key={opt} value={opt}>{opt}</option>
-            ))}
+            {(["Shop Now", "Learn More", "Sign Up", "Book Now", "Contact Us", "Download"] as CTA[]).map(
+              (opt) => (
+                <option key={opt} value={opt}>
+                  {opt}
+                </option>
+              )
+            )}
           </select>
         </div>
       )}
@@ -224,9 +249,13 @@ const EditorPanel: React.FC<EditorPanelProps> = (props) => {
               value={cta}
               onChange={(e) => setCta(e.target.value as CTA)}
             >
-              {(["Shop Now","Learn More","Sign Up","Book Now","Contact Us","Download"] as CTA[]).map((opt) => (
-                <option key={opt} value={opt}>{opt}</option>
-              ))}
+              {(["Shop Now", "Learn More", "Sign Up", "Book Now", "Contact Us", "Download"] as CTA[]).map(
+                (opt) => (
+                  <option key={opt} value={opt}>
+                    {opt}
+                  </option>
+                )
+              )}
             </select>
           </div>
         </div>

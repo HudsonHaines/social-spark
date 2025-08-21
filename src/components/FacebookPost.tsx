@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useRef, useState } from "react";
 import { domainFromUrl } from "../lib/utils";
 
 export const CTA_OPTIONS = [
@@ -17,7 +17,7 @@ export type MediaItem = {
   url: string;
   type: "image" | "video";
   name: string;
-  linkHeadline?: string;
+  linkHeadline?: string; // optional per-card headline
 };
 
 export type FacebookPostProps = {
@@ -34,6 +34,10 @@ export type FacebookPostProps = {
   cta: CTA;
   nextSlide: () => void;
   prevSlide: () => void;
+
+  // video controls
+  videoMuted: boolean;
+  onToggleMute: () => void;
 };
 
 const FacebookPost: React.FC<FacebookPostProps> = ({
@@ -50,9 +54,66 @@ const FacebookPost: React.FC<FacebookPostProps> = ({
   cta,
   nextSlide,
   prevSlide,
+  videoMuted,
+  onToggleMute,
 }) => {
   const current = media[slideIndex];
   const h = mode === "carousel" ? current?.linkHeadline || linkHeadline : linkHeadline;
+
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const [isPlaying, setIsPlaying] = useState(false);
+
+  const togglePlay = () => {
+    const v = videoRef.current;
+    if (!v) return;
+    if (v.paused) v.play();
+    else v.pause();
+  };
+
+  const renderMedia = (m?: MediaItem, altKey?: string) => {
+    if (!m) return null;
+    if (m.type === "image") {
+      return (
+        <img
+          src={m.url}
+          alt={altKey || "media"}
+          className="mx-auto w-full object-contain"
+          loading="lazy"
+        />
+      );
+    }
+    // video
+    return (
+      <div className="relative">
+        <video
+          ref={videoRef}
+          src={m.url}
+          muted={videoMuted}
+          className="mx-auto w-full"
+          onPlay={() => setIsPlaying(true)}
+          onPause={() => setIsPlaying(false)}
+        />
+        {/* Center play/pause control */}
+        <button
+          type="button"
+          onClick={togglePlay}
+          className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 flex h-14 w-14 items-center justify-center rounded-full bg-black/60 text-white shadow"
+          aria-label={isPlaying ? "Pause video" : "Play video"}
+        >
+          <span className="text-2xl">{isPlaying ? "❚❚" : "▶"}</span>
+        </button>
+        {/* Mute toggle */}
+        <button
+          type="button"
+          onClick={onToggleMute}
+          className="absolute right-3 top-3 rounded-full bg-black/60 px-3 py-1 text-sm text-white"
+          aria-label={videoMuted ? "Unmute video" : "Mute video"}
+        >
+          {videoMuted ? "🔇" : "🔊"}
+        </button>
+      </div>
+    );
+  };
 
   return (
     <div className="w-full">
@@ -60,12 +121,17 @@ const FacebookPost: React.FC<FacebookPostProps> = ({
       <div className="border-b p-4">
         <div className="flex items-center gap-3">
           <img
-            src={profileUrl || "https://ui-avatars.com/api/?name=FB&background=0D8ABC&color=fff"}
+            src={
+              profileUrl ||
+              "https://ui-avatars.com/api/?name=FB&background=0D8ABC&color=fff"
+            }
             alt="profile"
             className="h-10 w-10 rounded-full object-cover"
           />
           <div className="leading-tight">
-            <div className="text-[14px] font-semibold text-[#050505]">{author || "Your Page"}</div>
+            <div className="text-[14px] font-semibold text-[#050505]">
+              {author || "Your Page"}
+            </div>
             <div className="text-[12px] text-[#65676B]">
               {timestamp || "Just now"} · <span title="Public">🌎</span>
             </div>
@@ -83,29 +149,11 @@ const FacebookPost: React.FC<FacebookPostProps> = ({
         <div className="relative">
           {mode === "static" ? (
             <div className="relative overflow-hidden bg-black">
-              {media[0]?.type === "image" ? (
-                <img
-                  src={media[0]?.url}
-                  alt="media-0"
-                  className="mx-auto w-full object-contain"
-                  loading="lazy"
-                />
-              ) : (
-                <video src={media[0]?.url} controls className="mx-auto w-full" />
-              )}
+              {renderMedia(media[0], "media-0")}
             </div>
           ) : (
             <div className="relative overflow-hidden bg-black">
-              {current?.type === "image" ? (
-                <img
-                  src={current?.url}
-                  alt={`slide-${slideIndex}`}
-                  className="mx-auto w-full object-contain"
-                  loading="lazy"
-                />
-              ) : (
-                <video src={current?.url} controls className="mx-auto w-full" />
-              )}
+              {renderMedia(current, `slide-${slideIndex}`)}
 
               {/* Carousel arrows */}
               {media.length > 1 && (
@@ -169,7 +217,7 @@ const FacebookPost: React.FC<FacebookPostProps> = ({
         </div>
       )}
 
-      {/* Footer (light) */}
+      {/* Footer */}
       <div className="px-4 pt-2">
         <div className="flex items-center justify-between text-[13px] text-[#65676B]">
           <span>0 likes</span>
