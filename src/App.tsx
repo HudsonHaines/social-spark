@@ -2,6 +2,8 @@ import React, { useCallback, useMemo, useState } from "react";
 import FacebookPost, { type CTA, type MediaItem, type Mode } from "./components/FacebookPost";
 import EditorPanel from "./components/EditorPanel";
 import MobilePreview from "./components/MobilePreview";
+import { useAuth } from "./auth/AuthProvider";
+import { supabase } from "./lib/supabase";
 
 // A single post's shape
 type Post = {
@@ -37,6 +39,8 @@ const createEmptyPost = (): Post => ({
 });
 
 const App: React.FC = () => {
+  // Auth grab user
+  const { user } = useAuth();
   // Multiple posts
   const [posts, setPosts] = useState<Post[]>([createEmptyPost()]);
   const [current, setCurrent] = useState(0);
@@ -194,6 +198,17 @@ const App: React.FC = () => {
 
   return (
     <div className="flex min-h-screen flex-col items-center bg-[#F0F2F5] p-4">
+      <div className="mb-3 flex w-full max-w-6xl items-center justify-between">
+  <div className="text-sm text-gray-600">
+    Signed in as {user?.email || "account"}
+  </div>
+  <button
+    onClick={() => supabase.auth.signOut()}
+    className="rounded border px-3 py-1 text-sm hover:bg-gray-50"
+  >
+    Sign out
+  </button>
+</div>
       {/* View toggles */}
       <div className="mb-4 flex gap-2">
         <button
