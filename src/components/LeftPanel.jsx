@@ -1,9 +1,9 @@
-// src/components/LeftPanel.jsx
-import React, { useRef } from "react";
+import React, { useRef, useState, useMemo } from "react";
 import {
-  Settings2, Image as ImageIcon, Video as VideoIcon, Trash2, Plus,
+  Settings2, Image as ImageIcon, Video as VideoIcon, Trash2,
   Save, Film, Eye, Copy, Loader2
 } from "lucide-react";
+import { useBrands } from "../data/brands";
 
 const cx = (...a) => a.filter(Boolean).join(" ");
 
@@ -18,15 +18,24 @@ function Section({ title, children }) {
   );
 }
 
-function Radio({ label, checked, onChange }) {
+function Radio({ label, checked, onChange, name, value, id }) {
   return (
     <label
       className={cx(
         "px-2 py-1 rounded-md border cursor-pointer select-none text-sm",
         checked ? "bg-slate-900 text-white border-slate-900" : "bg-white hover:bg-slate-50"
       )}
+      htmlFor={id}
     >
-      <input type="radio" className="hidden" checked={checked} onChange={onChange} />
+      <input
+        id={id}
+        name={name}
+        value={value}
+        type="radio"
+        className="hidden"
+        checked={checked}
+        onChange={onChange}
+      />
       {label}
     </label>
   );
@@ -34,6 +43,7 @@ function Radio({ label, checked, onChange }) {
 
 export default function LeftPanel({
   // editor
+  user,
   post,
   update,
   onDrop,
@@ -49,16 +59,77 @@ export default function LeftPanel({
   deleteFromDeck,
   startPresentingDeck,
   loadingDeck,
-  // brands
-  brands,
-  selectedBrandId,
-  onSelectBrand,
-  openBrandManager,
 }) {
   const fileImgRef = useRef(null);
   const fileVidRef = useRef(null);
 
-  const selectedBrand = brands.find((b) => b.id === selectedBrandId) || null;
+  // Supabase brands
+  const { brands: brandRows, saveBrand, removeBrand, saving } = useBrands(user?.id);
+
+  const selectedBrand = useMemo(
+    () => brandRows.find((b) => b.id === post.brandId) || null,
+    [brandRows, post.brandId]
+  );
+
+  // Inline Add Brand form
+  const [showAdd, setShowAdd] = useState(false);
+  const [form, setForm] = useState({
+    fb_name: "",
+    fb_avatar_url: "",
+    ig_username: "",
+    ig_avatar_url: "",
+    verified: false,
+  });
+
+  function syncPostBrandFromRow(row) {
+    if (!row) {
+      update({
+        brandId: null,
+        brand: { name: "", username: "", profileSrc: "", verified: false },
+      });
+      return;
+    }
+    const profileSrc =
+      post.platform === "facebook"
+        ? (row.fb_avatar_url || "")
+        : (row.ig_avatar_url || "");
+
+    update({
+      brandId: row.id,
+      brand: {
+        name: row.fb_name || "",
+        username: row.ig_username || "",
+        profileSrc,
+        verified: !!row.verified,
+      },
+    });
+  }
+
+  function handlePickBrand(idOrNull) {
+    const row = brandRows.find((r) => r.id === idOrNull) || null;
+    syncPostBrandFromRow(row);
+  }
+
+  async function handleAddBrand(e) {
+    e.preventDefault();
+    if (!user?.id) return;
+    const saved = await saveBrand(form);
+    setForm({
+      fb_name: "",
+      fb_avatar_url: "",
+      ig_username: "",
+      ig_avatar_url: "",
+      verified: false,
+    });
+    setShowAdd(false);
+    syncPostBrandFromRow(saved);
+  }
+
+  async function handleDeleteSelected() {
+    if (!post.brandId) return;
+    await removeBrand(post.brandId);
+    syncPostBrandFromRow(null);
+  }
 
   return (
     <div className="bg-white rounded-2xl shadow-sm border overflow-hidden">
@@ -72,21 +143,107 @@ export default function LeftPanel({
         <Section title="Brand">
           <div className="flex items-center gap-2">
             <select
+              id="brand_select"
+              name="brand_select"
               className="select flex-1"
-              value={selectedBrandId || ""}
-              onChange={(e) => onSelectBrand(e.target.value || null)}
+              value={post.brandId || ""}
+              onChange={(e) => handlePickBrand(e.target.value || null)}
             >
               <option value="">No brand selected</option>
-              {brands.map((b) => (
+              {brandRows.map((b) => (
                 <option key={b.id} value={b.id}>
-                  {(b.fb_name || "FB name")} · @{b.ig_username || "ig"}
+                  {(b.fb_name || "FB name")} · @{b.ig_username || "ig"}{b.verified ? " ✓" : ""}
                 </option>
               ))}
             </select>
-            <button className="btn-outline" onClick={openBrandManager}>
-              Manage brands
+
+            <button className="btn-outline" onClick={() => setShowAdd((s) => !s)}>
+              Add
+            </button>
+
+            <button
+              className="btn-outline text-red-600 border-red-200"
+              onClick={handleDeleteSelected}
+              disabled={!post.brandId || saving}
+              title="Delete selected brand"
+            >
+              Delete
             </button>
           </div>
+
+          {showAdd && (
+            <form
+              onSubmit={handleAddBrand}
+              className="mt-3 border rounded-xl p-3 space-y-3 bg-white"
+            >
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label htmlFor="fb_name" className="text-xs text-slate-500">Facebook name</label>
+                  <input
+                    id="fb_name"
+                    name="fb_name"
+                    className="input"
+                    placeholder="e.g. Patagonia"
+                    value={form.fb_name}
+                    onChange={(e) => setForm((f) => ({ ...f, fb_name: e.target.value }))}
+                  />
+                </div>
+                <div>
+                  <label htmlFor="fb_avatar_url" className="text-xs text-slate-500">Facebook avatar URL</label>
+                  <input
+                    id="fb_avatar_url"
+                    name="fb_avatar_url"
+                    className="input"
+                    placeholder="https://..."
+                    value={form.fb_avatar_url}
+                    onChange={(e) => setForm((f) => ({ ...f, fb_avatar_url: e.target.value }))}
+                  />
+                </div>
+                <div>
+                  <label htmlFor="ig_username" className="text-xs text-slate-500">Instagram username</label>
+                  <input
+                    id="ig_username"
+                    name="ig_username"
+                    className="input"
+                    placeholder="e.g. patagonia"
+                    value={form.ig_username}
+                    onChange={(e) => setForm((f) => ({ ...f, ig_username: e.target.value }))}
+                  />
+                </div>
+                <div>
+                  <label htmlFor="ig_avatar_url" className="text-xs text-slate-500">Instagram avatar URL</label>
+                  <input
+                    id="ig_avatar_url"
+                    name="ig_avatar_url"
+                    className="input"
+                    placeholder="https://..."
+                    value={form.ig_avatar_url}
+                    onChange={(e) => setForm((f) => ({ ...f, ig_avatar_url: e.target.value }))}
+                  />
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <input
+                  id="brand_verified"
+                  name="brand_verified"
+                  type="checkbox"
+                  checked={form.verified}
+                  onChange={(e) => setForm((f) => ({ ...f, verified: e.target.checked }))}
+                />
+                <label htmlFor="brand_verified" className="text-sm">Verified</label>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button className={cx("btn", saving && "opacity-70")} disabled={saving}>
+                  Save brand
+                </button>
+                <button type="button" className="btn" onClick={() => setShowAdd(false)}>
+                  Cancel
+                </button>
+              </div>
+            </form>
+          )}
 
           <div className="flex items-center gap-3 mt-3">
             <div className="relative">
@@ -105,9 +262,12 @@ export default function LeftPanel({
               </div>
             </div>
 
+            {/* Per-post overrides still supported */}
             <div className="flex-1 grid grid-cols-1 gap-2">
-              <label className="text-xs text-slate-500">Facebook page name</label>
+              <label className="text-xs text-slate-500" htmlFor="brand_name">Facebook page name</label>
               <input
+                id="brand_name"
+                name="brand_name"
                 className="input"
                 value={post.brand?.name || ""}
                 onChange={(e) => update({ brand: { ...post.brand, name: e.target.value } })}
@@ -116,8 +276,10 @@ export default function LeftPanel({
 
               <div className="grid grid-cols-2 gap-2 items-center">
                 <div className="col-span-1">
-                  <label className="text-xs text-slate-500">Instagram username</label>
+                  <label className="text-xs text-slate-500" htmlFor="brand_username">Instagram username</label>
                   <input
+                    id="brand_username"
+                    name="brand_username"
                     className="input"
                     value={post.brand?.username || ""}
                     onChange={(e) =>
@@ -126,14 +288,16 @@ export default function LeftPanel({
                     placeholder="e.g. patagonia"
                   />
                 </div>
-                <label className="flex items-center gap-2 text-sm col-span-1 mt-5">
+                <div className="flex items-center gap-2 text-sm col-span-1 mt-5">
                   <input
+                    id="brand_verified_override"
+                    name="brand_verified_override"
                     type="checkbox"
                     checked={!!post.brand?.verified}
                     onChange={(e) => update({ brand: { ...post.brand, verified: e.target.checked } })}
                   />
-                  Verified badge
-                </label>
+                  <label htmlFor="brand_verified_override">Verified badge</label>
+                </div>
               </div>
             </div>
           </div>
@@ -141,7 +305,10 @@ export default function LeftPanel({
 
         {/* Post copy */}
         <Section title="Post copy">
+          <label htmlFor="post_caption" className="sr-only">Post caption</label>
           <textarea
+            id="post_caption"
+            name="post_caption"
             className="textarea"
             rows={5}
             value={post.caption || ""}
@@ -154,40 +321,52 @@ export default function LeftPanel({
         {/* Media */}
         <Section title="Media">
           <div className="flex items-center gap-2 pb-2 flex-wrap">
+            {/* Images: auto chooses single vs carousel based on count */}
             <Radio
-              label="Single"
-              checked={post.type === "single"}
-              onChange={() => update({ type: "single", videoSrc: "" })}
+              id="type_images"
+              name="media_type"
+              value="images"
+              label="Images"
+              checked={post.type !== "video"}
+              onChange={() => {
+                const n = post.media?.length || 0;
+                const nextType = n > 1 ? "carousel" : "single";
+                update({ type: nextType, videoSrc: "" });
+              }}
             />
+            {/* Video */}
             <Radio
-              label="Carousel"
-              checked={post.type === "carousel"}
-              onChange={() => update({ type: "carousel", videoSrc: "" })}
-            />
-            <Radio
+              id="type_video"
+              name="media_type"
+              value="video"
               label="Video"
               checked={post.type === "video"}
               onChange={() => update({ type: "video" })}
             />
+
             {post.platform === "instagram" ? (
-              <label className="flex items-center gap-2 ml-auto text-sm">
+              <div className="flex items-center gap-2 ml-auto text-sm">
                 <input
+                  id="is_reel"
+                  name="is_reel"
                   type="checkbox"
                   checked={!!post.isReel}
                   onChange={(e) => update({ isReel: e.target.checked })}
                 />
-                Reel
-              </label>
+                <label htmlFor="is_reel">Reel</label>
+              </div>
             ) : (
               <div className="flex items-center gap-3 ml-auto">
-                <label className="flex items-center gap-2 text-sm">
+                <div className="flex items-center gap-2 text-sm">
                   <input
+                    id="fb_square"
+                    name="fb_square"
                     type="checkbox"
                     checked={!!post.fbSquare}
                     onChange={(e) => update({ fbSquare: e.target.checked })}
                   />
-                  Square 1:1 (Facebook)
-                </label>
+                  <label htmlFor="fb_square">Square 1:1 (Facebook)</label>
+                </div>
                 <span className="text-xs text-slate-500">Landscape uses 16:9</span>
               </div>
             )}
@@ -214,6 +393,8 @@ export default function LeftPanel({
             </div>
 
             <input
+              id="image_files"
+              name="image_files"
               ref={fileImgRef}
               type="file"
               accept="image/*"
@@ -224,6 +405,8 @@ export default function LeftPanel({
               }}
             />
             <input
+              id="video_file"
+              name="video_file"
               ref={fileVidRef}
               type="file"
               accept="video/mp4,video/webm,video/quicktime"
@@ -271,30 +454,65 @@ export default function LeftPanel({
               </button>
             </div>
           ) : null}
+
+          {/* Per-image headline editor */}
+          {post.type !== "video" && (post.media?.length || 0) > 0 ? (
+            <div className="pt-3">
+              <label htmlFor="image_headline" className="text-xs text-slate-500">
+                Headline for image {post.activeIndex + 1}
+              </label>
+              <input
+                id="image_headline"
+                name="image_headline"
+                className="input mt-1"
+                placeholder="Enter headline for this image"
+                value={post.mediaMeta?.[post.activeIndex]?.headline || ""}
+                onChange={(e) => {
+                  const next = (post.mediaMeta || []).slice();
+                  const idx = post.activeIndex || 0;
+                  next[idx] = { ...(next[idx] || {}), headline: e.target.value };
+                  update({ mediaMeta: next });
+                }}
+              />
+            </div>
+          ) : null}
         </Section>
 
         {/* Link preview (Facebook style) */}
         <Section title="Link preview (Facebook style)">
+          <label htmlFor="link_headline" className="sr-only">Headline</label>
           <input
+            id="link_headline"
+            name="link_headline"
             className="input"
             placeholder="Headline"
             value={post.link?.headline || ""}
             onChange={(e) => update({ link: { ...post.link, headline: e.target.value } })}
           />
+          <label htmlFor="link_subhead" className="sr-only">Subhead</label>
           <input
+            id="link_subhead"
+            name="link_subhead"
             className="input"
             placeholder="Subhead"
             value={post.link?.subhead || ""}
             onChange={(e) => update({ link: { ...post.link, subhead: e.target.value } })}
           />
           <div className="flex items-center gap-2">
+            <label htmlFor="link_url" className="sr-only">Link URL</label>
             <input
+              id="link_url"
+              name="link_url"
               className="input flex-1"
               placeholder="Link URL"
               value={post.link?.url || ""}
               onChange={(e) => update({ link: { ...post.link, url: e.target.value } })}
+              autoComplete="url"
             />
+            <label htmlFor="link_cta" className="sr-only">CTA</label>
             <select
+              id="link_cta"
+              name="link_cta"
               className="select"
               value={post.link?.cta || "Learn More"}
               onChange={(e) => update({ link: { ...post.link, cta: e.target.value } })}
@@ -345,8 +563,7 @@ export default function LeftPanel({
                       {new Date(d.createdAt).toLocaleString()}
                     </div>
                     <div className="text-xs text-slate-500">
-                      {(d.post?.brand?.name || "Brand")} · {d.post?.platform || "facebook"} ·{" "}
-                      {d.post?.type || "single"}
+                      {(d.post?.brand?.name || "Brand")} · {d.post?.platform || "facebook"} · {d.post?.type || "single"}
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
