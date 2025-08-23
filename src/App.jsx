@@ -1,6 +1,8 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Download, Play, Volume2, VolumeX, ChevronLeft, ChevronRight, CheckCircle2, Settings2, Image as ImageIcon, Video as VideoIcon, Layers, Eye, Edit3, Trash2, Plus, Save, Loader2, Film, SkipBack, SkipForward, Square, Copy } from "lucide-react";
 import * as htmlToImage from "html-to-image";
+import ProfileButton from './profile/ProfileButton.jsx'
+
 
 // Helpers
 const readFileAsDataURL = (file) => new Promise((resolve, reject) => {
@@ -227,22 +229,30 @@ export default function App(){
   );
 }
 
-function TopBar({ platform, setPlatform, mode, setMode }){
+function TopBar({ platform, setPlatform, mode, setMode }) {
   return (
     <div className="w-full border-b bg-white/80 backdrop-blur sticky top-0 z-30">
       <div className="max-w-[1400px] mx-auto px-4 py-3 flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <Layers className="w-5 h-5" />
+          <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none"><circle cx="6" cy="6" r="3" stroke="currentColor"/><circle cx="18" cy="6" r="3" stroke="currentColor"/><circle cx="6" cy="18" r="3" stroke="currentColor"/><circle cx="18" cy="18" r="3" stroke="currentColor"/></svg>
           <span className="font-semibold">Social Mockup Builder</span>
         </div>
         <div className="flex items-center gap-2">
-          <Tabs value={platform} onChange={setPlatform} items={[{ id: "facebook", label: "Facebook" },{ id: "instagram", label: "Instagram" }]} />
+          <Tabs value={platform} onChange={setPlatform} items={[
+            { id: 'facebook', label: 'Facebook' },
+            { id: 'instagram', label: 'Instagram' },
+          ]} />
           <div className="w-px h-6 bg-slate-200 mx-2" />
-          <Tabs value={mode} onChange={setMode} items={[{ id: "create", label: "Create" },{ id: "present", label: "Present" }]} />
+          <Tabs value={mode} onChange={setMode} items={[
+            { id: 'create', label: 'Create' },
+            { id: 'present', label: 'Present' },
+          ]} />
+          <div className="w-px h-6 bg-slate-200 mx-2" />
+          <ProfileButton />
         </div>
       </div>
     </div>
-  );
+  )
 }
 
 function Tabs({ items, value, onChange }){
