@@ -1,32 +1,34 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
-  Download,
-  Play,
-  Volume2,
-  VolumeX,
-  ChevronLeft,
-  ChevronRight,
-  CheckCircle2,
-  Settings2,
-  Image as ImageIcon,
-  Video as VideoIcon,
-  Eye,
-  Edit3,
-  Trash2,
-  Plus,
-  Save,
-  Loader2,
-  Film,
-  SkipBack,
-  SkipForward,
-  Square,
-  Copy,
+  Download, Play, Volume2, VolumeX, ChevronLeft, ChevronRight, CheckCircle2, Settings2,
+  Image as ImageIcon, Video as VideoIcon, Eye, Edit3, Trash2, Plus, Save, Loader2,
+  Film, SkipBack, SkipForward, Square, Copy,
 } from "lucide-react";
 import * as htmlToImage from "html-to-image";
 import ProfileButton from "./profile/ProfileButton.jsx";
 import AuthGate from "./auth/AuthGate";
+import { useAuth } from "./auth/AuthProvider";
 
-// ---------- helpers ----------
+import {
+  fetchDeckFromSupabase,
+  addDeckPostToSupabase,
+  deleteDeckPostFromSupabase,
+  duplicateDeckPostInSupabase
+} from "./data/deck.js";
+
+/* ========== helpers ========== */
+
+// safe session save: drop heavy fields
+function saveSessionLight(key, post) {
+  try {
+    const { media, videoSrc, ...light } = post || {};
+    sessionStorage.setItem(key, JSON.stringify(light));
+  } catch (e) {
+    // ignore quota errors
+    console.warn("session save skipped:", e?.message);
+  }
+}
+
 const readFileAsDataURL = (file) =>
   new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -35,17 +37,52 @@ const readFileAsDataURL = (file) =>
     reader.readAsDataURL(file);
   });
 
+// draw image to canvas to cap size and compress
+async function compressDataUrl(dataUrl, { maxEdge = 1600, quality = 0.85, format = "image/jpeg" } = {}) {
+  const img = document.createElement("img");
+  img.decoding = "async";
+  img.src = dataUrl;
+  await img.decode();
+
+  let { width, height } = img;
+  const scale = Math.min(1, maxEdge / Math.max(width, height));
+  const outW = Math.max(1, Math.round(width * scale));
+  const outH = Math.max(1, Math.round(height * scale));
+
+  const canvas = document.createElement("canvas");
+  canvas.width = outW;
+  canvas.height = outH;
+  const ctx = canvas.getContext("2d");
+  ctx.drawImage(img, 0, 0, outW, outH);
+
+  const out = canvas.toDataURL(format, quality);
+  return out;
+}
+
+// read multiple images sequentially, compressing each
+async function readImagesSequential(files, limit = 5) {
+  const out = [];
+  for (const f of files) {
+    if (!f.type?.startsWith("image/")) continue;
+    if (out.length >= limit) break;
+    // eslint-disable-next-line no-await-in-loop
+    const raw = await readFileAsDataURL(f);
+    // eslint-disable-next-line no-await-in-loop
+    const slim = await compressDataUrl(raw, { maxEdge: 1600, quality: 0.85 });
+    out.push(slim);
+  }
+  return out;
+}
+
 const classNames = (...arr) => arr.filter(Boolean).join(" ");
 
 const formatCaption = (text) => {
   if (!text) return [];
   const parts = [];
   const regex = /([#@][A-Za-z0-9_.]+)/g;
-  let lastIndex = 0;
-  let match;
+  let lastIndex = 0, match;
   while ((match = regex.exec(text)) !== null) {
-    const start = match.index;
-    const end = regex.lastIndex;
+    const start = match.index, end = regex.lastIndex;
     if (start > lastIndex) parts.push({ type: "text", value: text.slice(lastIndex, start) });
     const token = match[0];
     parts.push({ type: token.startsWith("#") ? "hashtag" : "mention", value: token });
@@ -55,25 +92,25 @@ const formatCaption = (text) => {
   return parts;
 };
 
-// ---------- defaults ----------
-const CTA_OPTIONS = ["Learn More", "Shop Now", "Sign Up", "Download", "Book Now", "Contact Us"];
+/* ========== defaults ========== */
 
+const CTA_OPTIONS = ["Learn More", "Shop Now", "Sign Up", "Download", "Book Now", "Contact Us"];
 const emptyBrand = { name: "Your Brand", username: "yourbrand", profileSrc: "", verified: false };
 const emptyLink = { headline: "", subhead: "", url: "", cta: CTA_OPTIONS[0] };
 const emptyMetrics = { likes: 128, comments: 24, shares: 12, saves: 9, views: 10234 };
 
 const emptyPost = {
   id: null,
-  platform: "facebook", // facebook or instagram
+  platform: "facebook",
   type: "single", // single, carousel, video
   isReel: false,
   caption: "Write your post copy here...",
-  media: [], // images
-  videoSrc: "", // object URL for real video
+  media: [],          // array of compressed data URLs
+  videoSrc: "",       // object URL
   muted: true,
   playing: false,
   activeIndex: 0,
-  fbSquare: true, // lock FB images to 1:1 by default
+  fbSquare: true,
   link: { ...emptyLink },
   brand: { ...emptyBrand },
   metrics: { ...emptyMetrics },
@@ -82,48 +119,97 @@ const emptyPost = {
 const SESSION_KEY = "smb-session";
 const DECK_KEY = "smb-deck";
 
-// ===================================================================
-// App (state container) + Auth gate wrapper
-// ===================================================================
+/* ========== Error Boundary ========== */
+class ErrorBoundary extends React.Component {
+  constructor(props) { super(props); this.state = { error: null }; }
+  static getDerivedStateFromError(error) { return { error }; }
+  componentDidCatch(error, info) { console.error("UI error:", error, info); }
+  render() {
+    if (this.state.error) {
+      return (
+        <div className="p-6 text-sm">
+          <div className="font-semibold mb-2">Something went wrong</div>
+          <pre className="bg-slate-100 p-3 rounded">{String(this.state.error?.message || this.state.error)}</pre>
+          <button className="btn mt-3" onClick={() => location.reload()}>Reload</button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
+/* ========== App ========== */
+
 export default function App() {
-  // current working post
+  const { user } = useAuth();
+
   const [post, setPost] = useState(() => {
-    const saved = sessionStorage.getItem(SESSION_KEY);
-    return saved ? JSON.parse(saved) : { ...emptyPost, id: crypto.randomUUID() };
+    // recover light fields from session
+    let base = emptyPost;
+    try {
+      const saved = sessionStorage.getItem(SESSION_KEY);
+      if (saved) base = { ...emptyPost, ...JSON.parse(saved) };
+    } catch {}
+    return { ...base, id: crypto.randomUUID() };
   });
 
-  // month deck
   const [deck, setDeck] = useState(() => {
     const raw = localStorage.getItem(DECK_KEY);
     return raw ? JSON.parse(raw) : [];
   });
 
-  const [mode, setMode] = useState("create"); // create | present
+  const [mode, setMode] = useState("create");
   const [savingImg, setSavingImg] = useState(false);
   const [presentIndex, setPresentIndex] = useState(0);
+  const [loadingDeck, setLoadingDeck] = useState(false);
 
   const previewRef = useRef(null);
   const videoRef = useRef(null);
 
+  // store only light fields to session
+  useEffect(() => { saveSessionLight(SESSION_KEY, post); }, [post]);
+
+  // load deck from Supabase when logged in
   useEffect(() => {
-    sessionStorage.setItem(SESSION_KEY, JSON.stringify(post));
-  }, [post]);
+    if (!user) return;
+    let alive = true;
+    (async () => {
+      try {
+        setLoadingDeck(true);
+        const rows = await fetchDeckFromSupabase();
+        if (!alive) return;
+        setDeck(rows);
+        localStorage.setItem(DECK_KEY, JSON.stringify(rows));
+      } catch (e) {
+        console.error("fetchDeck error", e);
+      } finally {
+        if (alive) setLoadingDeck(false);
+      }
+    })();
+    return () => { alive = false };
+  }, [user]);
 
   const update = (patch) => setPost((p) => ({ ...p, ...patch }));
 
-  // -------- media handlers --------
+  /* media handlers */
+
   const handleImageFiles = async (files) => {
-    const list = Array.from(files).filter((f) => f.type.startsWith("image/")).slice(0, 5);
-    const urls = await Promise.all(list.map(readFileAsDataURL));
-    setPost((p) => ({
-      ...p,
-      media: urls.slice(0, 5),
-      videoSrc: "",
-      playing: false,
-      muted: true,
-      type: urls.length > 1 ? "carousel" : "single",
-      activeIndex: 0,
-    }));
+    try {
+      const list = Array.from(files || []);
+      const urls = await readImagesSequential(list, 5); // compressed
+      const nextType = urls.length > 1 ? "carousel" : "single";
+      setPost((p) => ({
+        ...p,
+        media: urls,
+        videoSrc: "",
+        playing: false,
+        muted: true,
+        type: nextType,
+        activeIndex: 0,
+      }));
+    } catch (err) {
+      console.error("handleImageFiles error", err);
+    }
   };
 
   const handleVideoFile = async (file) => {
@@ -140,7 +226,7 @@ export default function App() {
   };
 
   const clearVideo = () => {
-    if (post.videoSrc) URL.revokeObjectURL(post.videoSrc);
+    try { if (post.videoSrc) URL.revokeObjectURL(post.videoSrc); } catch {}
     setPost((p) => ({
       ...p,
       videoSrc: "",
@@ -152,10 +238,11 @@ export default function App() {
 
   const removeImageAt = (idx) => {
     setPost((p) => {
-      const copy = [...p.media];
-      copy.splice(idx, 1);
-      const nextType = copy.length > 1 ? "carousel" : "single";
-      return { ...p, media: copy, type: nextType, activeIndex: 0 };
+      const media = [...p.media];
+      media.splice(idx, 1);
+      const nextType = media.length > 1 ? "carousel" : "single";
+      const nextIndex = Math.min(p.activeIndex, Math.max(0, media.length - 1));
+      return { ...p, media, type: nextType, activeIndex: nextIndex };
     });
   };
 
@@ -164,12 +251,14 @@ export default function App() {
     e.stopPropagation();
     const files = Array.from(e.dataTransfer.files || []);
     if (!files.length) return;
-    const vid = files.find((f) => f.type.startsWith("video/"));
+    const vid = files.find((f) => f.type?.startsWith("video/"));
     if (vid) return handleVideoFile(vid);
-    return handleImageFiles(files);
+    const imgs = files.filter((f) => f.type?.startsWith("image/"));
+    if (imgs.length) await handleImageFiles(imgs);
   };
 
-  // -------- export --------
+  /* export */
+
   const saveAsPng = async () => {
     if (!previewRef.current) return;
     try {
@@ -185,25 +274,37 @@ export default function App() {
     }
   };
 
-  // -------- deck actions --------
-  const addToDeck = () => {
-    const item = { id: crypto.randomUUID(), createdAt: Date.now(), post };
-    const next = [item, ...deck];
-    setDeck(next);
-    localStorage.setItem(DECK_KEY, JSON.stringify(next));
+  /* deck actions */
+
+  const setDeckAndMirror = (rows) => {
+    setDeck(rows);
+    localStorage.setItem(DECK_KEY, JSON.stringify(rows));
   };
 
-  const duplicateToDeck = (id) => {
-    const item = deck.find((d) => d.id === id);
-    if (!item) return;
-    const copy = {
-      id: crypto.randomUUID(),
-      createdAt: Date.now(),
-      post: { ...item.post, id: crypto.randomUUID() },
-    };
-    const next = [copy, ...deck];
-    setDeck(next);
-    localStorage.setItem(DECK_KEY, JSON.stringify(next));
+  const addToDeck = async () => {
+    try {
+      const item = await addDeckPostToSupabase({ ...post, videoSrc: "" }); // drop video URL
+      setDeckAndMirror([item, ...deck]);
+    } catch (e) {
+      console.error(e);
+      const item = { id: crypto.randomUUID(), createdAt: Date.now(), post: { ...post, videoSrc: "" } };
+      setDeckAndMirror([item, ...deck]);
+      alert("Saved locally. Cloud save failed.");
+    }
+  };
+
+  const duplicateToDeck = async (id) => {
+    try {
+      const item = await duplicateDeckPostInSupabase(id);
+      setDeckAndMirror([item, ...deck]);
+    } catch (e) {
+      console.error(e);
+      const src = deck.find((d) => d.id === id);
+      if (!src) return;
+      const copy = { id: crypto.randomUUID(), createdAt: Date.now(), post: { ...src.post, id: crypto.randomUUID() } };
+      setDeckAndMirror([copy, ...deck]);
+      alert("Duplicated locally. Cloud duplicate failed.");
+    }
   };
 
   const loadFromDeck = (id) => {
@@ -211,10 +312,17 @@ export default function App() {
     if (item) setPost(item.post);
   };
 
-  const deleteFromDeck = (id) => {
-    const next = deck.filter((d) => d.id !== id);
-    setDeck(next);
-    localStorage.setItem(DECK_KEY, JSON.stringify(next));
+  const deleteFromDeck = async (id) => {
+    try {
+      await deleteDeckPostFromSupabase(id);
+      const next = deck.filter((d) => d.id !== id);
+      setDeckAndMirror(next);
+    } catch (e) {
+      console.error(e);
+      const next = deck.filter((d) => d.id !== id);
+      setDeckAndMirror(next);
+      alert("Deleted locally. Cloud delete failed.");
+    }
   };
 
   const startPresentingDeck = (startId) => {
@@ -230,65 +338,48 @@ export default function App() {
 
   return (
     <AuthGate>
-      <AppShell
-        post={post}
-        update={update}
-        deck={deck}
-        setPost={setPost}
-        mode={mode}
-        setMode={setMode}
-        savingImg={savingImg}
-        presentIndex={presentIndex}
-        onPrev={goPrev}
-        onNext={goNext}
-        previewPost={previewPost}
-        previewRef={previewRef}
-        videoRef={videoRef}
-        onDrop={onDrop}
-        handleImageFiles={handleImageFiles}
-        handleVideoFile={handleVideoFile}
-        clearVideo={clearVideo}
-        removeImageAt={removeImageAt}
-        addToDeck={addToDeck}
-        duplicateToDeck={duplicateToDeck}
-        loadFromDeck={loadFromDeck}
-        deleteFromDeck={deleteFromDeck}
-        startPresentingDeck={startPresentingDeck}
-        saveAsPng={saveAsPng}
-      />
+      <ErrorBoundary>
+        <AppShell
+          post={post}
+          update={(patch) => setPost((p) => ({ ...p, ...patch }))}
+          deck={deck}
+          setPost={setPost}
+          mode={mode}
+          setMode={setMode}
+          savingImg={savingImg}
+          presentIndex={presentIndex}
+          onPrev={goPrev}
+          onNext={goNext}
+          previewPost={previewPost}
+          previewRef={previewRef}
+          videoRef={videoRef}
+          onDrop={onDrop}
+          handleImageFiles={handleImageFiles}
+          handleVideoFile={handleVideoFile}
+          clearVideo={clearVideo}
+          removeImageAt={removeImageAt}
+          addToDeck={addToDeck}
+          duplicateToDeck={duplicateToDeck}
+          loadFromDeck={loadFromDeck}
+          deleteFromDeck={deleteFromDeck}
+          startPresentingDeck={startPresentingDeck}
+          saveAsPng={saveAsPng}
+          loadingDeck={loadingDeck}
+        />
+      </ErrorBoundary>
     </AuthGate>
   );
 }
 
-// ===================================================================
-// AppShell (pure UI, receives props)
-// ===================================================================
+/* ========== AppShell (UI) ========== */
+
 function AppShell(props) {
   const {
-    post,
-    update,
-    deck,
-    setPost,
-    mode,
-    setMode,
-    savingImg,
-    presentIndex,
-    onPrev,
-    onNext,
-    previewPost,
-    previewRef,
-    videoRef,
-    onDrop,
-    handleImageFiles,
-    handleVideoFile,
-    clearVideo,
-    removeImageAt,
-    addToDeck,
-    duplicateToDeck,
-    loadFromDeck,
-    deleteFromDeck,
-    startPresentingDeck,
-    saveAsPng,
+    post, update, deck, setPost, mode, setMode, savingImg, presentIndex,
+    onPrev, onNext, previewPost, previewRef, videoRef, onDrop,
+    handleImageFiles, handleVideoFile, clearVideo, removeImageAt,
+    addToDeck, duplicateToDeck, loadFromDeck, deleteFromDeck, startPresentingDeck,
+    saveAsPng, loadingDeck
   } = props;
 
   return (
@@ -300,12 +391,7 @@ function AppShell(props) {
         setMode={setMode}
       />
 
-      <div
-        className={classNames(
-          "mx-auto max-w-[1400px] p-4 gap-4",
-          mode === "create" ? "grid grid-cols-1 lg:grid-cols-[460px_minmax(0,1fr)]" : ""
-        )}
-      >
+      <div className={classNames("mx-auto max-w-[1400px] p-4 gap-4", mode === "create" ? "grid grid-cols-1 lg:grid-cols-[460px_minmax(0,1fr)]" : "") }>
         {mode === "create" ? (
           <LeftPanel
             post={post}
@@ -321,6 +407,7 @@ function AppShell(props) {
             loadFromDeck={loadFromDeck}
             deleteFromDeck={deleteFromDeck}
             startPresentingDeck={startPresentingDeck}
+            loadingDeck={loadingDeck}
           />
         ) : null}
 
@@ -353,40 +440,20 @@ function AppShell(props) {
   );
 }
 
-// ===================================================================
-// UI pieces
-// ===================================================================
+/* ========== UI pieces ========== */
+
 function TopBar({ platform, setPlatform, mode, setMode }) {
   return (
     <div className="w-full border-b bg-white/80 backdrop-blur sticky top-0 z-30">
       <div className="max-w-[1400px] mx-auto px-4 py-3 flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none">
-            <circle cx="6" cy="6" r="3" stroke="currentColor" />
-            <circle cx="18" cy="6" r="3" stroke="currentColor" />
-            <circle cx="6" cy="18" r="3" stroke="currentColor" />
-            <circle cx="18" cy="18" r="3" stroke="currentColor" />
-          </svg>
+          <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none"><circle cx="6" cy="6" r="3" stroke="currentColor"/><circle cx="18" cy="6" r="3" stroke="currentColor"/><circle cx="6" cy="18" r="3" stroke="currentColor"/><circle cx="18" cy="18" r="3" stroke="currentColor"/></svg>
           <span className="font-semibold">Social Mockup Builder</span>
         </div>
         <div className="flex items-center gap-2">
-          <Tabs
-            value={platform}
-            onChange={setPlatform}
-            items={[
-              { id: "facebook", label: "Facebook" },
-              { id: "instagram", label: "Instagram" },
-            ]}
-          />
+          <Tabs value={platform} onChange={setPlatform} items={[{ id: 'facebook', label: 'Facebook' }, { id: 'instagram', label: 'Instagram' }]} />
           <div className="w-px h-6 bg-slate-200 mx-2" />
-          <Tabs
-            value={mode}
-            onChange={setMode}
-            items={[
-              { id: "create", label: "Create" },
-              { id: "present", label: "Present" },
-            ]}
-          />
+          <Tabs value={mode} onChange={setMode} items={[{ id: 'create', label: 'Create' }, { id: 'present', label: 'Present' }]} />
           <div className="w-px h-6 bg-slate-200 mx-2" />
           <ProfileButton />
         </div>
@@ -395,20 +462,11 @@ function TopBar({ platform, setPlatform, mode, setMode }) {
   );
 }
 
-function Tabs({ items, value, onChange }) {
+function Tabs({ items, value, onChange }){
   return (
     <div className="flex items-center bg-slate-100 rounded-xl p-1">
-      {items.map((it) => (
-        <button
-          key={it.id}
-          onClick={() => onChange(it.id)}
-          className={classNames(
-            "px-3 py-1.5 rounded-lg text-sm",
-            value === it.id ? "bg-white shadow" : "text-slate-600"
-          )}
-        >
-          {it.label}
-        </button>
+      {items.map(it => (
+        <button key={it.id} onClick={() => onChange(it.id)} className={classNames("px-3 py-1.5 rounded-lg text-sm", value === it.id ? "bg-white shadow" : "text-slate-600")}>{it.label}</button>
       ))}
     </div>
   );
@@ -417,9 +475,7 @@ function Tabs({ items, value, onChange }) {
 function Section({ title, children }) {
   return (
     <div>
-      <div className="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-2">
-        {title}
-      </div>
+      <div className="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-2">{title}</div>
       <div className="space-y-2">{children}</div>
     </div>
   );
@@ -427,12 +483,7 @@ function Section({ title, children }) {
 
 function Radio({ label, checked, onChange }) {
   return (
-    <label
-      className={classNames(
-        "px-2 py-1 rounded-md border cursor-pointer select-none text-sm",
-        checked ? "bg-slate-900 text-white border-slate-900" : "bg-white hover:bg-slate-50"
-      )}
-    >
+    <label className={classNames("px-2 py-1 rounded-md border cursor-pointer select-none text-sm", checked ? "bg-slate-900 text-white border-slate-900" : "bg-white hover:bg-slate-50")}>
       <input type="radio" className="hidden" checked={checked} onChange={onChange} />
       {label}
     </label>
@@ -440,20 +491,9 @@ function Radio({ label, checked, onChange }) {
 }
 
 function LeftPanel({
-  post,
-  update,
-  onDrop,
-  handleImageFiles,
-  handleVideoFile,
-  clearVideo,
-  removeImageAt,
-  addToDeck,
-  duplicateToDeck,
-  deck,
-  loadFromDeck,
-  deleteFromDeck,
-  startPresentingDeck,
-}) {
+  post, update, onDrop, handleImageFiles, handleVideoFile, clearVideo, removeImageAt,
+  addToDeck, duplicateToDeck, deck, loadFromDeck, deleteFromDeck, startPresentingDeck, loadingDeck
+}){
   const fileImgRef = useRef(null);
   const fileVidRef = useRef(null);
 
@@ -470,17 +510,9 @@ function LeftPanel({
           <div className="flex items-center gap-3">
             <div className="relative">
               <div className="w-14 h-14 rounded-full bg-slate-100 overflow-hidden flex items-center justify-center">
-                {post.brand.profileSrc ? (
-                  <img src={post.brand.profileSrc} alt="profile" className="w-full h-full object-cover" />
-                ) : (
-                  <ImageIcon className="w-6 h-6 text-slate-400" />
-                )}
+                {post.brand.profileSrc ? (<img src={post.brand.profileSrc} alt="profile" className="w-full h-full object-cover" />) : (<ImageIcon className="w-6 h-6 text-slate-400" />)}
               </div>
-              <button
-                className="absolute -bottom-1 -right-1 bg-white rounded-full p-1 shadow border"
-                onClick={() => fileImgRef.current?.click()}
-                title="Upload profile"
-              >
+              <button className="absolute -bottom-1 -right-1 bg-white rounded-full p-1 shadow border" onClick={() => fileImgRef.current?.click()} title="Upload profile">
                 <Plus className="w-3 h-3" />
               </button>
               <input
@@ -491,38 +523,24 @@ function LeftPanel({
                 onChange={async (e) => {
                   const f = e.target.files?.[0];
                   if (f) {
-                    const url = await readFileAsDataURL(f);
-                    update({ brand: { ...post.brand, profileSrc: url } });
+                    const raw = await readFileAsDataURL(f);
+                    const slim = await compressDataUrl(raw, { maxEdge: 600, quality: 0.85 });
+                    update({ brand: { ...post.brand, profileSrc: slim } });
                   }
+                  e.target.value = "";
                 }}
               />
             </div>
             <div className="flex-1 grid grid-cols-1 gap-2">
               <label className="text-xs text-slate-500">Facebook page name</label>
-              <input
-                className="input"
-                placeholder="e.g. Patagonia"
-                value={post.brand.name}
-                onChange={(e) => update({ brand: { ...post.brand, name: e.target.value } })}
-              />
+              <input className="input" placeholder="e.g. Patagonia" value={post.brand.name} onChange={(e) => update({ brand: { ...post.brand, name: e.target.value } })} />
               <div className="grid grid-cols-2 gap-2 items-center">
                 <div className="col-span-1">
                   <label className="text-xs text-slate-500">Instagram username</label>
-                  <input
-                    className="input"
-                    placeholder="e.g. patagonia"
-                    value={post.brand.username}
-                    onChange={(e) =>
-                      update({ brand: { ...post.brand, username: e.target.value.replace(/^@/, "") } })
-                    }
-                  />
+                  <input className="input" placeholder="e.g. patagonia" value={post.brand.username} onChange={(e) => update({ brand: { ...post.brand, username: e.target.value.replace(/^@/, "") } })} />
                 </div>
                 <label className="flex items-center gap-2 text-sm col-span-1 mt-5">
-                  <input
-                    type="checkbox"
-                    checked={post.brand.verified}
-                    onChange={(e) => update({ brand: { ...post.brand, verified: e.target.checked } })}
-                  />
+                  <input type="checkbox" checked={post.brand.verified} onChange={(e) => update({ brand: { ...post.brand, verified: e.target.checked } })} />
                   Verified badge
                 </label>
               </div>
@@ -532,12 +550,7 @@ function LeftPanel({
 
         {/* Post copy */}
         <Section title="Post copy">
-          <textarea
-            className="textarea"
-            rows={5}
-            value={post.caption}
-            onChange={(e) => update({ caption: e.target.value })}
-          />
+          <textarea className="textarea" rows={5} value={post.caption} onChange={(e) => update({ caption: e.target.value })} />
           <div className="text-xs text-slate-500 text-right">{post.caption.length} chars</div>
         </Section>
 
@@ -556,11 +569,7 @@ function LeftPanel({
           {post.platform === "facebook" && post.type !== "video" ? (
             <div className="flex items-center gap-3 pb-2">
               <label className="flex items-center gap-2 text-sm">
-                <input
-                  type="checkbox"
-                  checked={post.fbSquare}
-                  onChange={(e) => update({ fbSquare: e.target.checked })}
-                />
+                <input type="checkbox" checked={post.fbSquare} onChange={(e) => update({ fbSquare: e.target.checked })} />
                 Square 1:1 (Facebook)
               </label>
               <span className="text-xs text-slate-500">Landscape uses 16:9</span>
@@ -568,23 +577,14 @@ function LeftPanel({
           ) : null}
 
           <div
-            onDragOver={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-            }}
+            onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); }}
             onDrop={onDrop}
             className="border-2 border-dashed rounded-xl p-4 text-center bg-slate-50"
           >
             <p className="text-sm mb-2">Drag files here, or</p>
             <div className="flex items-center justify-center gap-2 flex-wrap">
-              <button className="btn" onClick={() => document.getElementById("media-input")?.click()}>
-                <ImageIcon className="w-4 h-4 mr-1" />
-                Add images
-              </button>
-              <button className="btn-outline" onClick={() => fileVidRef.current?.click()}>
-                <VideoIcon className="w-4 h-4 mr-1" />
-                Add video
-              </button>
+              <button className="btn" onClick={() => document.getElementById("media-input")?.click()}><ImageIcon className="w-4 h-4 mr-1"/>Add images</button>
+              <button className="btn-outline" onClick={() => fileVidRef.current?.click()}><VideoIcon className="w-4 h-4 mr-1"/>Add video</button>
             </div>
             <input
               id="media-input"
@@ -593,7 +593,11 @@ function LeftPanel({
               multiple
               className="hidden"
               onChange={async (e) => {
-                if (e.target.files) await handleImageFiles(e.target.files);
+                const { files } = e.target;
+                if (files && files.length) {
+                  await handleImageFiles(files);
+                }
+                e.target.value = "";
               }}
             />
             <input
@@ -604,9 +608,8 @@ function LeftPanel({
               className="hidden"
               onChange={async (e) => {
                 const f = e.target.files?.[0];
-                if (f) {
-                  await handleVideoFile(f);
-                }
+                if (f) await handleVideoFile(f);
+                e.target.value = "";
               }}
             />
           </div>
@@ -614,22 +617,9 @@ function LeftPanel({
           {post.type !== "video" && post.media.length ? (
             <div className="grid grid-cols-5 gap-2 pt-3">
               {post.media.map((m, i) => (
-                <div
-                  key={i}
-                  className={classNames(
-                    "relative rounded-lg overflow-hidden border",
-                    i === post.activeIndex ? "ring-2 ring-blue-500" : ""
-                  )}
-                  onClick={() => update({ activeIndex: i })}
-                >
+                <div key={i} className={classNames("relative rounded-lg overflow-hidden border", i === post.activeIndex ? "ring-2 ring-blue-500" : "")} onClick={() => update({ activeIndex: i })}>
                   <img src={m} className="w-full h-20 object-cover block" />
-                  <button
-                    className="absolute top-1 right-1 bg-white/90 rounded-full p-1 shadow"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      removeImageAt(i);
-                    }}
-                  >
+                  <button className="absolute top-1 right-1 bg-white/90 rounded-full p-1 shadow" onClick={(e) => { e.stopPropagation(); removeImageAt(i); }}>
                     <Trash2 className="w-3 h-3" />
                   </button>
                 </div>
@@ -640,45 +630,19 @@ function LeftPanel({
           {post.type === "video" && post.videoSrc ? (
             <div className="flex items-center justify-between pt-2">
               <div className="text-xs text-slate-600 truncate">Video loaded</div>
-              <button className="chip" onClick={clearVideo}>
-                <Trash2 className="w-3 h-3 mr-1" />
-                Remove video
-              </button>
+              <button className="chip" onClick={clearVideo}><Trash2 className="w-3 h-3 mr-1"/>Remove video</button>
             </div>
           ) : null}
         </Section>
 
-        {/* Link preview - Facebook style */}
+        {/* Link preview */}
         <Section title="Link preview (Facebook style)">
-          <input
-            className="input"
-            placeholder="Headline"
-            value={post.link.headline}
-            onChange={(e) => update({ link: { ...post.link, headline: e.target.value } })}
-          />
-          <input
-            className="input"
-            placeholder="Subhead"
-            value={post.link.subhead}
-            onChange={(e) => update({ link: { ...post.link, subhead: e.target.value } })}
-          />
+          <input className="input" placeholder="Headline" value={post.link.headline} onChange={(e) => update({ link: { ...post.link, headline: e.target.value } })} />
+          <input className="input" placeholder="Subhead" value={post.link.subhead} onChange={(e) => update({ link: { ...post.link, subhead: e.target.value } })} />
           <div className="flex items-center gap-2">
-            <input
-              className="input flex-1"
-              placeholder="Link URL"
-              value={post.link.url}
-              onChange={(e) => update({ link: { ...post.link, url: e.target.value } })}
-            />
-            <select
-              className="select"
-              value={post.link.cta}
-              onChange={(e) => update({ link: { ...post.link, cta: e.target.value } })}
-            >
-              {CTA_OPTIONS.map((c) => (
-                <option key={c} value={c}>
-                  {c}
-                </option>
-              ))}
+            <input className="input flex-1" placeholder="Link URL" value={post.link.url} onChange={(e) => update({ link: { ...post.link, url: e.target.value } })} />
+            <select className="select" value={post.link.cta} onChange={(e) => update({ link: { ...post.link, cta: e.target.value } })}>
+              {CTA_OPTIONS.map((c) => <option key={c} value={c}>{c}</option>)}
             </select>
           </div>
         </Section>
@@ -686,47 +650,23 @@ function LeftPanel({
         {/* Deck actions */}
         <Section title="Deck (multiple posts)">
           <div className="flex items-center gap-2">
-            <button className="btn" onClick={addToDeck}>
-              <Save className="w-4 h-4 mr-1" />
-              Add this post to deck
-            </button>
-            {deck.length ? (
-              <button className="btn-outline" onClick={() => startPresentingDeck(deck[0]?.id)}>
-                <Film className="w-4 h-4 mr-1" />
-                Present deck
-              </button>
-            ) : null}
+            <button className="btn" onClick={addToDeck}><Save className="w-4 h-4 mr-1"/>Add this post to deck</button>
+            {deck.length ? <button className="btn-outline" onClick={() => startPresentingDeck(deck[0]?.id)}><Film className="w-4 h-4 mr-1"/>Present deck</button> : null}
+            {loadingDeck ? <span className="text-xs text-slate-500">Syncing…</span> : null}
           </div>
           {deck.length ? (
             <div className="space-y-2 max-h-48 overflow-auto pr-1 pt-2">
               {deck.map((d) => (
-                <div
-                  key={d.id}
-                  className="flex items-center justify-between border rounded-lg p-2 hover:bg-slate-50"
-                >
+                <div key={d.id} className="flex items-center justify-between border rounded-lg p-2 hover:bg-slate-50">
                   <div className="text-sm">
                     <div className="font-medium">{new Date(d.createdAt).toLocaleString()}</div>
-                    <div className="text-xs text-slate-500">
-                      {d.post.brand?.name} · {d.post.platform} · {d.post.type}
-                    </div>
+                    <div className="text-xs text-slate-500">{d.post.brand?.name} · {d.post.platform} · {d.post.type}</div>
                   </div>
                   <div className="flex items-center gap-2">
-                    <button className="chip" onClick={() => loadFromDeck(d.id)}>
-                      <Eye className="w-3 h-3 mr-1" />
-                      Load
-                    </button>
-                    <button className="chip" onClick={() => duplicateToDeck(d.id)}>
-                      <Copy className="w-3 h-3 mr-1" />
-                      Duplicate
-                    </button>
-                    <button className="chip" onClick={() => startPresentingDeck(d.id)}>
-                      <Film className="w-3 h-3 mr-1" />
-                      Start here
-                    </button>
-                    <button className="chip" onClick={() => deleteFromDeck(d.id)}>
-                      <Trash2 className="w-3 h-3 mr-1" />
-                      Remove
-                    </button>
+                    <button className="chip" onClick={() => loadFromDeck(d.id)}><Eye className="w-3 h-3 mr-1"/>Load</button>
+                    <button className="chip" onClick={() => duplicateToDeck(d.id)}><Copy className="w-3 h-3 mr-1"/>Duplicate</button>
+                    <button className="chip" onClick={() => startPresentingDeck(d.id)}><Film className="w-3 h-3 mr-1"/>Start here</button>
+                    <button className="chip" onClick={() => deleteFromDeck(d.id)}><Trash2 className="w-3 h-3 mr-1"/>Remove</button>
                   </div>
                 </div>
               ))}
@@ -738,64 +678,34 @@ function LeftPanel({
   );
 }
 
-const PresenterControls = ({
-  platform,
-  setPlatform,
-  exit,
-  saveAsPng,
-  savingImg,
-  hasDeck,
-  onPrev,
-  onNext,
-  index,
-  total,
-}) => (
+const PresenterControls = ({ platform, setPlatform, exit, saveAsPng, savingImg, hasDeck, onPrev, onNext, index, total }) => (
   <div className="fixed bottom-4 left-1/2 -translate-x-1/2 bg-white shadow-lg border rounded-full px-3 py-2 flex items-center gap-2 z-40">
     <Tabs value={platform} onChange={setPlatform} items={[{ id: "facebook", label: "Facebook" }, { id: "instagram", label: "Instagram" }]} />
     {hasDeck ? (
       <div className="flex items-center gap-1 ml-2">
-        <button className="btn-outline" onClick={onPrev}>
-          <SkipBack className="w-4 h-4 mr-1" />
-          Prev
-        </button>
-        <div className="text-xs text-slate-600 px-2">
-          {index + 1} / {total}
-        </div>
-        <button className="btn-outline" onClick={onNext}>
-          Next
-          <SkipForward className="w-4 h-4 ml-1" />
-        </button>
+        <button className="btn-outline" onClick={onPrev}><SkipBack className="w-4 h-4 mr-1"/>Prev</button>
+        <div className="text-xs text-slate-600 px-2">{index + 1} / {total}</div>
+        <button className="btn-outline" onClick={onNext}>Next<SkipForward className="w-4 h-4 ml-1"/></button>
       </div>
     ) : null}
     <div className="w-px h-6 bg-slate-200 mx-2" />
     <button className="btn-outline" onClick={saveAsPng} disabled={savingImg}>
-      {savingImg ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : <Download className="w-4 h-4 mr-1" />}
+      {savingImg ? <Loader2 className="w-4 h-4 mr-1 animate-spin"/> : <Download className="w-4 h-4 mr-1"/>}
       Export PNG
     </button>
-    <button className="btn" onClick={exit}>
-      <Edit3 className="w-4 h-4 mr-1" />
-      Edit
-    </button>
+    <button className="btn" onClick={exit}><Edit3 className="w-4 h-4 mr-1"/>Edit</button>
   </div>
 );
 
-const RightPreview = React.forwardRef(function RightPreview(
-  { post, setPost, mode, saveAsPng, savingImg, videoRef },
-  ref
-) {
+const RightPreview = React.forwardRef(function RightPreview({ post, setPost, mode, saveAsPng, savingImg, videoRef }, ref) {
   return (
-    <div className={classNames("relative", mode === "present" ? "p-6" : "")}>
-      <div
-        className={classNames(
-          "bg-white rounded-2xl shadow-sm border mx-auto",
-          mode === "present" ? "max-w-[560px]" : "max-w-[720px]"
-        )}
-      >
+    <div className={classNames("relative", mode === "present" ? "p-6" : "") }>
+      <div className={classNames("bg-white rounded-2xl shadow-sm border mx-auto", mode === "present" ? "max-w-[560px]" : "max-w-[720px]") }>
         <div className="px-4 py-3 border-b flex items-center justify-between">
           <div className="font-medium">Live preview</div>
           <div className="flex items-center gap-2">
             <button className="btn-outline" onClick={saveAsPng} disabled={savingImg}>
-              {savingImg ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : <Download className="w-4 h-4 mr-1" />}
+              {savingImg ? <Loader2 className="w-4 h-4 mr-1 animate-spin"/> : <Download className="w-4 h-4 mr-1"/>}
               PNG
             </button>
           </div>
@@ -823,16 +733,14 @@ function FacebookPost({ post, setPost, videoRef }) {
       {/* Header */}
       <div className="flex items-center gap-3 px-4 py-3">
         <div className="w-10 h-10 rounded-full overflow-hidden bg-slate-200">
-          {post.brand.profileSrc ? <img src={post.brand.profileSrc} className="w-full h-full object-cover" /> : null}
+          {post.brand.profileSrc ? (<img src={post.brand.profileSrc} className="w-full h-full object-cover" />) : null}
         </div>
         <div className="leading-tight">
           <div className="flex items-center gap-1 font-semibold">
             <span>{post.brand.name || "Brand"}</span>
-            {post.brand.verified ? <CheckCircle2 className="w-4 h-4 text-blue-500" /> : null}
+            {post.brand.verified ? <CheckCircle2 className="w-4 h-4 text-blue-500"/> : null}
           </div>
-          <div className="text-xs text-slate-500">
-            Just now · <span className="inline-block w-3 h-3 align-[-2px] bg-slate-300 rounded-sm" />
-          </div>
+          <div className="text-xs text-slate-500">Just now · <span className="inline-block w-3 h-3 align-[-2px] bg-slate-300 rounded-sm"/></div>
         </div>
       </div>
 
@@ -853,13 +761,15 @@ function FacebookPost({ post, setPost, videoRef }) {
       </div>
 
       {/* Link card */}
-      {post.link.url || post.link.headline || post.link.subhead ? (
+      {(post.link.url || post.link.headline || post.link.subhead) ? (
         <div className="w-full border-t">
           <div className="px-4 py-3">
             <div className="text-[11px] uppercase tracking-wide text-slate-500">
               {(post.link.url || "example.com").replace(/https?:\/\//, "").replace(/\/$/, "")}
             </div>
-            <div className="mt-1 font-semibold leading-snug">{post.link.headline || "Link headline"}</div>
+            <div className="mt-1 font-semibold leading-snug">
+              {post.link.headline || "Link headline"}
+            </div>
             <div className="mt-1 text-[13px] text-slate-600 leading-snug">
               {post.link.subhead || "Short description"}
             </div>
@@ -881,10 +791,8 @@ function FacebookPost({ post, setPost, videoRef }) {
         </div>
       </div>
       <div className="grid grid-cols-3 text-sm text-slate-700">
-        {["Like", "Comment", "Share"].map((t) => (
-          <div key={t} className="py-2 text-center hover:bg-slate-50 cursor-default select-none">
-            {t}
-          </div>
+        {['Like','Comment','Share'].map((t) => (
+          <div key={t} className="py-2 text-center hover:bg-slate-50 cursor-default select-none">{t}</div>
         ))}
       </div>
     </div>
@@ -893,18 +801,18 @@ function FacebookPost({ post, setPost, videoRef }) {
 
 function InstagramPost({ post, setPost, videoRef }) {
   const parts = useMemo(() => formatCaption(post.caption), [post.caption]);
-  const hasCarousel = (post.type === "carousel" && post.media.length > 1) || post.media.length > 1;
+  const hasCarousel = (post.type === "carousel" && post.media.length > 1) || (post.media.length > 1);
 
   return (
     <div className="text-[14px]" style={{ fontFamily: "-apple-system, BlinkMacSystemFont, Segoe UI, Roboto, Arial, sans-serif" }}>
       {/* Header */}
       <div className="flex items-center gap-3 px-3 py-2">
         <div className="w-8 h-8 rounded-full overflow-hidden bg-slate-200">
-          {post.brand.profileSrc ? <img src={post.brand.profileSrc} className="w-full h-full object-cover" /> : null}
+          {post.brand.profileSrc ? (<img src={post.brand.profileSrc} className="w-full h-full object-cover" />) : null}
         </div>
         <div className="flex items-center gap-1 font-semibold">
           <span>{post.brand.username || "brand"}</span>
-          {post.brand.verified ? <CheckCircle2 className="w-4 h-4 text-blue-500" /> : null}
+          {post.brand.verified ? <CheckCircle2 className="w-4 h-4 text-blue-500"/> : null}
         </div>
       </div>
 
@@ -914,7 +822,7 @@ function InstagramPost({ post, setPost, videoRef }) {
         {hasCarousel ? (
           <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex gap-1">
             {post.media.map((_, i) => (
-              <span key={i} className={classNames("w-1.5 h-1.5 rounded-full", i === post.activeIndex ? "bg-white" : "bg-white/40")} />
+              <span key={i} className={classNames("w-1.5 h-1.5 rounded-full", i === post.activeIndex ? "bg-white" : "bg-white/40")}></span>
             ))}
           </div>
         ) : null}
@@ -924,8 +832,7 @@ function InstagramPost({ post, setPost, videoRef }) {
       <div className="px-3 py-2 text-sm font-semibold">{post.metrics.likes.toLocaleString()} likes</div>
 
       {/* Caption */}
-      <div className="px-3 pb-3 text-sm">
-        <span className="font-semibold mr-1">{post.brand.username}</span>
+      <div className="px-3 pb-3 text-sm"><span className="font-semibold mr-1">{post.brand.username}</span>
         {parts.map((p, i) => {
           if (p.type === "text") return <span key={i}>{p.value}</span>;
           if (p.type === "hashtag") return <span key={i} className="text-blue-600">{p.value}</span>;
@@ -942,25 +849,20 @@ function InstagramPost({ post, setPost, videoRef }) {
 }
 
 function MediaFrame({ post, videoRef, setPost }) {
-  // Aspect logic:
-  // - Facebook image: 1:1 or 16:9 landscape (56.25%)
-  // - Facebook video: 16:9 landscape (56.25%)
-  // - Instagram post: 1:1
-  // - Instagram reel: 9:16 portrait (177.78%)
+  // Facebook: image 1:1 or 16:9, video 16:9. Instagram: post 1:1, reel 9:16.
   let paddingTop;
-  if (post.platform === "facebook") {
-    if (post.type === "video") paddingTop = "56.25%"; // 16:9
-    else paddingTop = post.fbSquare ? "100%" : "56.25%"; // 1:1 or 16:9
+  if (post.platform === 'facebook') {
+    if (post.type === 'video') paddingTop = '56.25%';
+    else paddingTop = post.fbSquare ? '100%' : '56.25%';
   } else {
-    // Instagram
-    paddingTop = post.isReel ? "177.78%" : "100%"; // 9:16 or 1:1
+    paddingTop = post.isReel ? '177.78%' : '100%';
   }
 
   const active = post.media[post.activeIndex];
 
   return (
     <div className="relative w-full bg-black/5 overflow-hidden">
-      <div className="w-full" style={{ paddingTop }} />
+      <div className="w-full" style={{ paddingTop }}></div>
       <div className="absolute inset-0 bg-black/5">
         {post.type === "video" && post.videoSrc ? (
           <VideoPlayer post={post} videoRef={videoRef} setPost={setPost} />
@@ -1000,60 +902,32 @@ function VideoPlayer({ post, videoRef, setPost }) {
     <div className="relative w-full h-full bg-black">
       <video ref={videoRef} src={post.videoSrc} className="w-full h-full object-cover" muted={post.muted} playsInline />
       <div className="absolute inset-0 flex items-center justify-center">
-        <button
-          onClick={togglePlay}
-          className="w-16 h-16 rounded-full bg-black/40 flex items-center justify-center border border-white/30"
-        >
-          {post.playing ? <Square className="w-8 h-8 text-white" /> : <Play className="w-8 h-8 text-white" />}
+        <button onClick={togglePlay} className="w-16 h-16 rounded-full bg-black/40 flex items-center justify-center border border-white/30">
+          {post.playing ? <Square className="w-8 h-8 text-white"/> : <Play className="w-8 h-8 text-white"/>}
         </button>
       </div>
-      <button
-        onClick={toggleMute}
-        className="absolute top-2 right-2 bg-black/50 text-white p-2 rounded-full border border-white/20"
-      >
-        {post.muted ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
+      <button onClick={toggleMute} className="absolute top-2 right-2 bg-black/50 text-white p-2 rounded-full border border-white/20">
+        {post.muted ? <VolumeX className="w-4 h-4"/> : <Volume2 className="w-4 h-4"/>}
       </button>
     </div>
   );
 }
 
-function CarouselArrows({ post, setPost }) {
+function CarouselArrows({ post, setPost }){
   const total = post.media.length;
-  const go = (dir) =>
-    setPost((p) => {
-      const next = (p.activeIndex + dir + total) % total;
-      return { ...p, activeIndex: next };
-    });
+  const go = (dir) => setPost(p => {
+    const next = (p.activeIndex + dir + total) % total;
+    return { ...p, activeIndex: next };
+  });
   if (total <= 1) return null;
   return (
     <>
-      <button
-        onClick={() => go(-1)}
-        className="absolute top-1/2 -translate-y-1/2 left-2 bg-black/40 text-white p-2 rounded-full"
-      >
+      <button onClick={() => go(-1)} className="absolute top-1/2 -translate-y-1/2 left-2 bg-black/40 text-white p-2 rounded-full">
         <ChevronLeft className="w-5 h-5" />
       </button>
-      <button
-        onClick={() => go(1)}
-        className="absolute top-1/2 -translate-y-1/2 right-2 bg-black/40 text-white p-2 rounded-full"
-      >
+      <button onClick={() => go(1)} className="absolute top-1/2 -translate-y-1/2 right-2 bg-black/40 text-white p-2 rounded-full">
         <ChevronRight className="w-5 h-5" />
       </button>
     </>
   );
 }
-
-// tiny base rule so layout is not blank even if CSS fails
-const styles = `
-html, body, #root { height: 100%; margin: 0; }
-`;
-(function ensureHelpers() {
-  if (typeof document === "undefined") return;
-  const id = "helpers-style";
-  if (!document.getElementById(id)) {
-    const tag = document.createElement("style");
-    tag.id = id;
-    tag.innerHTML = styles;
-    document.head.appendChild(tag);
-  }
-})();
