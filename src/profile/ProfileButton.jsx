@@ -1,115 +1,76 @@
 // src/profile/ProfileButton.jsx
-import React, { useEffect, useRef, useState } from 'react';
-import { useProfile } from './ProfileProvider';
-import { supabase } from '../lib/supabaseClient';
+import React, { useState, useRef, useEffect } from "react";
+import { LogOut } from "lucide-react";
+import { supabase } from "../lib/supabaseClient";
 
-function Spinner() {
-  return (
-    <svg className="w-4 h-4 animate-spin" viewBox="0 0 24 24" fill="none">
-      <circle cx="12" cy="12" r="10" stroke="currentColor" strokeOpacity="0.25" strokeWidth="4"/>
-      <path d="M22 12a10 10 0 0 1-10 10" stroke="currentColor" strokeWidth="4"/>
-    </svg>
-  );
+function getDisplay(user) {
+  if (!user) return { name: "Guest", email: "", avatar: "" };
+  const meta = user.user_metadata || {};
+  const name =
+    meta.full_name ||
+    meta.name ||
+    meta.user_name ||
+    meta.preferred_username ||
+    "";
+  const email = user.email || "";
+  const avatar = meta.avatar_url || meta.picture || "";
+  return { name: name || email || "Account", email, avatar };
 }
 
-export default function ProfileButton() {
-  const { profile, loading, save, uploadAvatar } = useProfile();
+export default function ProfileButton({ user }) {
   const [open, setOpen] = useState(false);
-  const [name, setName] = useState(profile?.display_name || '');
   const btnRef = useRef(null);
-  const popRef = useRef(null);
-  const fileRef = useRef(null);
+  const { name, email, avatar } = getDisplay(user);
 
-  useEffect(() => { setName(profile?.display_name || ''); }, [profile?.display_name]);
-
-  // click outside to close
   useEffect(() => {
-    function onDocClick(e) {
-      if (!open) return;
-      const t = e.target;
-      if (btnRef.current?.contains(t)) return;
-      if (popRef.current?.contains(t)) return;
-      setOpen(false);
-    }
-    document.addEventListener('mousedown', onDocClick);
-    return () => document.removeEventListener('mousedown', onDocClick);
-  }, [open]);
+    const onDoc = (e) => {
+      if (!btnRef.current) return;
+      if (!btnRef.current.contains(e.target)) setOpen(false);
+    };
+    document.addEventListener("mousedown", onDoc);
+    return () => document.removeEventListener("mousedown", onDoc);
+  }, []);
 
-  const avatar = profile?.avatar_url;
+  const signOut = async () => {
+    await supabase.auth.signOut();
+    // Supabase AuthProvider should handle UI update on sign out
+  };
 
   return (
-    <div className="relative">
+    <div className="relative" ref={btnRef}>
       <button
-        ref={btnRef}
-        className="flex items-center gap-2 px-2 py-1 rounded-lg hover:bg-slate-100 relative z-[60]"
-        onClick={() => setOpen(o => !o)}
         type="button"
-        aria-haspopup="menu"
-        aria-expanded={open}
-        title="Profile"
+        className="flex items-center gap-2 px-2 py-1 rounded-lg hover:bg-slate-100"
+        onClick={() => setOpen((s) => !s)}
       >
-        <div className="w-7 h-7 rounded-full bg-slate-200 overflow-hidden">
-          {avatar ? <img src={avatar} className="w-full h-full object-cover" /> : null}
+        <div className="w-7 h-7 rounded-full bg-slate-200 overflow-hidden flex items-center justify-center">
+          {avatar ? (
+            <img src={avatar} alt="" className="w-full h-full object-cover" />
+          ) : (
+            <span className="text-xs text-slate-600">
+              {(name || email || "A").slice(0, 1).toUpperCase()}
+            </span>
+          )}
         </div>
-        <span className="text-sm">
-          {loading ? <span className="inline-flex items-center gap-1"><Spinner/> Loading</span> : (profile?.display_name || 'Profile')}
+        <span className="text-sm max-w-[140px] truncate">
+          {name || email || "Account"}
         </span>
       </button>
 
       {open ? (
-        <div
-          ref={popRef}
-          className="absolute right-0 mt-2 w-72 bg-white border rounded-xl shadow p-3 z-[70]"
-          role="menu"
-        >
-          <div className="text-sm font-semibold mb-2">Your profile</div>
-
-          <div className="flex items-center gap-3 mb-3">
-            <div className="w-12 h-12 rounded-full bg-slate-200 overflow-hidden">
-              {avatar ? <img src={avatar} className="w-full h-full object-cover" /> : null}
-            </div>
-            <div className="flex-1">
-              <input
-                className="input w-full"
-                placeholder="Display name"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-              />
-              <div className="text-xs text-slate-500 mt-1 truncate">{profile?.id}</div>
-            </div>
+        <div className="absolute right-0 mt-2 w-56 bg-white border rounded-xl shadow-lg p-2 z-50">
+          <div className="px-2 py-2">
+            <div className="text-sm font-medium truncate">{name || "Account"}</div>
+            {email ? <div className="text-xs text-slate-500 truncate">{email}</div> : null}
           </div>
-
-          <div className="flex items-center gap-2">
-            <button
-              className="btn"
-              onClick={async () => {
-                await save({ display_name: name, avatar_url: avatar || null });
-                setOpen(false);
-              }}
-            >
-              Save
-            </button>
-
-            <button className="btn-outline" onClick={() => fileRef.current?.click()}>Change avatar</button>
-            <input
-              ref={fileRef}
-              type="file"
-              accept="image/*"
-              className="hidden"
-              onChange={async (e) => {
-                const f = e.target.files?.[0];
-                if (f) await uploadAvatar(f);
-                e.target.value = '';
-              }}
-            />
-
-            <button
-              className="btn-outline ml-auto"
-              onClick={async () => { await supabase.auth.signOut(); setOpen(false); }}
-            >
-              Sign out
-            </button>
-          </div>
+          <div className="h-px bg-slate-200 my-1" />
+          <button
+            className="w-full flex items-center gap-2 px-2 py-2 rounded-lg hover:bg-slate-50 text-sm"
+            onClick={signOut}
+          >
+            <LogOut className="w-4 h-4" />
+            Sign out
+          </button>
         </div>
       ) : null}
     </div>
