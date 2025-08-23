@@ -1,52 +1,89 @@
-import { supabase } from '../lib/supabaseClient'
+import { supabase } from '../lib/supabaseClient';
 
-async function getUserFromSession() {
-  const { data, error } = await supabase.auth.getSession()
-  if (error) throw error
-  const user = data?.session?.user
-  if (!user) throw new Error('No session')
-  return user
+export async function getCurrentUser() {
+  const { data: { session } } = await supabase.auth.getSession();
+  return session?.user || null;
 }
 
-export async function getMyProfile() {
-  const user = await getUserFromSession()
+export async function fetchProfile() {
+  const user = await getCurrentUser();
+  if (!user) return null;
+
   const { data, error } = await supabase
     .from('profiles')
-    .select('id, display_name, avatar_url, updated_at')
+    .select('*')
     .eq('id', user.id)
-    .maybeSingle()
-  if (error) throw error
-  return data || { id: user.id, display_name: '', avatar_url: '' }
+    .single();
+
+  if (error && error.code !== 'PGRST116') throw error; // not found is ok
+  return data || null;
 }
 
-export async function upsertMyProfile({ display_name, avatar_url }) {
-  const user = await getUserFromSession()
-  const payload = {
+export async function ensureProfileExists() {
+  const user = await getCurrentUser();
+  if (!user) return null;
+
+  const base = {
     id: user.id,
-    display_name: display_name ?? null,
-    avatar_url: avatar_url ?? null,
-    updated_at: new Date().toISOString()
-  }
+    display_name:
+      user.user_metadata?.full_name ||
+      user.user_metadata?.name ||
+      user.email?.split('@')[0] ||
+      'User',
+    avatar_url: user.user_metadata?.avatar_url || null,
+  };
+
+  // upsert by id
   const { data, error } = await supabase
     .from('profiles')
-    .upsert(payload, { onConflict: 'id' })
-    .select('id, display_name, avatar_url, updated_at')
-    .single()
-  if (error) throw error
-  return data
+    .upsert({ ...base, updated_at: new Date().toISOString() })
+    .select('*')
+    .single();
+
+  if (error) throw error;
+  return data;
 }
 
-export async function uploadAvatar(file) {
-  const user = await getUserFromSession()
-  const ext = file.name.split('.').pop()
-  const path = `${user.id}/${crypto.randomUUID()}.${ext}`
+export async function saveProfile({ display_name, avatar_url }) {
+  const user = await getCurrentUser();
+  if (!user) throw new Error('Not signed in');
 
   const { data, error } = await supabase
+    .from('profiles')
+    .update({
+      display_name,
+      avatar_url,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', user.id)
+    .select('*')
+    .single();
+
+  if (error) throw error;
+  return data;
+}
+
+export async function uploadAvatarFile(file) {
+  const user = await getCurrentUser();
+  if (!user) throw new Error('Not signed in');
+
+  const path = `${user.id}/${Date.now()}_${file.name}`;
+
+  const { error: upErr } = await supabase
     .storage
     .from('avatars')
-    .upload(path, file, { contentType: file.type, upsert: false })
-  if (error) throw error
+    .upload(path, file, {
+      cacheControl: '3600',
+      upsert: true,
+      contentType: file.type,
+    });
 
-  const { data: pub } = supabase.storage.from('avatars').getPublicUrl(data.path)
-  return pub.publicUrl
+  if (upErr) throw upErr;
+
+  const { data: pub } = supabase
+    .storage
+    .from('avatars')
+    .getPublicUrl(path);
+
+  return pub.publicUrl;
 }

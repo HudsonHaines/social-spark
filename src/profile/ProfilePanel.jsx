@@ -1,112 +1,43 @@
-import React, { useEffect, useState } from 'react'
-import { getMyProfile, upsertMyProfile, uploadAvatar } from '../data/profile'
-import { supabase } from '../lib/supabaseClient'
+import React, { useRef, useState } from 'react';
+import { useProfile } from './ProfileProvider';
 
-export default function ProfilePanel({ onClose }) {
-  const [loading, setLoading] = useState(true)
-  const [saving, setSaving] = useState(false)
-  const [displayName, setDisplayName] = useState('')
-  const [avatarUrl, setAvatarUrl] = useState('')
-  const [email, setEmail] = useState('')
-  const [err, setErr] = useState('')
+export default function ProfilePanel() {
+  const { profile, loading, save, uploadAvatar } = useProfile();
+  const [name, setName] = useState(profile?.display_name || '');
+  const fileRef = useRef(null);
 
-  useEffect(() => {
-    let alive = true
-    ;(async () => {
-      try {
-        const [{ data: userRes }, prof] = await Promise.all([
-          supabase.auth.getUser(),
-          getMyProfile(),
-        ])
-        if (!alive) return
-        setEmail(userRes.user?.email || '')
-        setDisplayName(prof?.display_name || '')
-        setAvatarUrl(prof?.avatar_url || '')
-      } catch (e) {
-        console.error(e)
-        setErr(e.message || 'Failed to load profile')
-      } finally {
-        if (alive) setLoading(false)
-      }
-    })()
-    return () => {
-      alive = false
-    }
-  }, [])
+  React.useEffect(() => { setName(profile?.display_name || ''); }, [profile?.display_name]);
 
-  async function handleUpload(e) {
-    const file = e.target.files?.[0]
-    if (!file) return
-    setSaving(true)
-    setErr('')
-    try {
-      const url = await uploadAvatar(file)
-      setAvatarUrl(url)
-    } catch (e) {
-      console.error(e)
-      setErr(e.message || 'Avatar upload failed')
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  async function handleSave() {
-    setSaving(true)
-    setErr('')
-    try {
-      await upsertMyProfile({ display_name: displayName.trim(), avatar_url: avatarUrl || null })
-      onClose?.()
-    } catch (e) {
-      console.error(e)
-      setErr(e.message || 'Save failed')
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  if (loading) return <div className="p-4 text-sm text-slate-600">Loading profile…</div>
+  if (loading) return <div className="p-4 text-sm">Loading profile...</div>;
 
   return (
-    <div className="w-80 p-4">
-      {err ? (
-        <div className="mb-3 text-sm text-red-600 bg-red-50 border border-red-200 rounded-md p-2">
-          {err}
+    <div className="bg-white border rounded-2xl p-4">
+      <div className="text-lg font-semibold mb-3">Profile</div>
+      <div className="flex items-center gap-4">
+        <div className="w-20 h-20 rounded-full bg-slate-200 overflow-hidden">
+          {profile?.avatar_url ? <img src={profile.avatar_url} className="w-full h-full object-cover" /> : null}
         </div>
-      ) : null}
-
-      <div className="flex items-center gap-3 mb-4">
-        <div className="w-14 h-14 rounded-full bg-slate-200 overflow-hidden">
-          {avatarUrl ? <img src={avatarUrl} alt="" className="w-full h-full object-cover" /> : null}
-        </div>
-        <div>
-          <div className="text-sm text-slate-500">{email}</div>
-          <label className="text-xs text-slate-600 block mt-1">
-            Change avatar
-            <input type="file" accept="image/*" className="block mt-1 text-sm" onChange={handleUpload} />
-          </label>
+        <div className="flex-1">
+          <label className="text-xs text-slate-500">Display name</label>
+          <input className="input w-full" value={name} onChange={(e) => setName(e.target.value)} />
+          <div className="text-xs text-slate-500 mt-1">User ID: {profile?.id}</div>
         </div>
       </div>
-
-      <label className="text-xs text-slate-600">Display name</label>
-      <input
-        className="input mt-1 mb-4"
-        value={displayName}
-        onChange={(e) => setDisplayName(e.target.value)}
-        placeholder="Your name"
-      />
-
-      <div className="flex items-center justify-between">
-        <button className="btn-outline" onClick={onClose}>Cancel</button>
-        <button className="btn" onClick={handleSave} disabled={saving}>
-          {saving ? 'Saving…' : 'Save'}
-        </button>
-      </div>
-
-      <div className="mt-4">
-        <button className="btn-outline w-full" onClick={() => supabase.auth.signOut()}>
-          Sign out
-        </button>
+      <div className="flex items-center gap-2 mt-4">
+        <button className="btn" onClick={async () => { await save({ display_name: name, avatar_url: profile?.avatar_url || null }); }}>Save</button>
+        <button className="btn-outline" onClick={() => fileRef.current?.click()}>Change avatar</button>
+        <input
+          ref={fileRef}
+          type="file"
+          accept="image/*"
+          className="hidden"
+          onChange={async (e) => {
+            const f = e.target.files?.[0];
+            if (f) await uploadAvatar(f);
+            e.target.value = '';
+          }}
+        />
       </div>
     </div>
-  )
+  );
 }

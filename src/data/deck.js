@@ -1,114 +1,107 @@
-// src/data/deck.js
-import { supabase } from '../lib/supabaseClient'
+import { supabase } from '../lib/supabaseClient';
+import { ensurePostShape } from './postShape';
 
-async function getUser() {
-  const { data, error } = await supabase.auth.getSession()
-  if (error) throw error
-  const user = data?.session?.user
-  if (!user) throw new Error('No session')
-  return user
+// db row -> app item
+function mapRow(row) {
+  const safePost = ensurePostShape(row?.post);
+  return {
+    id: row.id,
+    createdAt: Date.parse(row.created_at || new Date().toISOString()),
+    post: safePost,
+  };
 }
 
-function sanitizePostForPersist(post) {
-  // object URLs for local videos do not survive reloads
-  if (post?.type === 'video') {
-    return { ...post, videoSrc: '' }
-  }
-  return post
+async function getUid() {
+  const { data: { session } } = await supabase.auth.getSession();
+  return session?.user?.id || null;
 }
 
 export async function fetchDeckFromSupabase() {
-  const user = await getUser()
+  const uid = await getUid();
+  if (!uid) return [];
+
   const { data, error } = await supabase
     .from('deck_posts')
-    .select('id, created_at, post_json')
-    .eq('user_id', user.id)
-    .order('created_at', { ascending: false })
-  if (error) throw error
-  return (data || []).map(r => ({
-    id: r.id,
-    createdAt: new Date(r.created_at).getTime(),
-    post: r.post_json
-  }))
+    .select('id, post, created_at, updated_at')
+    .eq('user_id', uid)
+    .order('created_at', { ascending: false });
+
+  if (error) throw error;
+  return (data || []).map(mapRow);
 }
 
 export async function addDeckPostToSupabase(post) {
-  const user = await getUser()
-  const id = crypto.randomUUID()
-  const payload = {
-    id,
-    user_id: user.id,
-    post_json: sanitizePostForPersist(post)
-  }
+  const uid = await getUid();
+  if (!uid) throw new Error('Not signed in');
+
+  const safePost = ensurePostShape({ ...post, id: post?.id || crypto.randomUUID() });
+
   const { data, error } = await supabase
     .from('deck_posts')
-    .insert(payload)
-    .select('id, created_at, post_json')
-    .single()
-  if (error) throw error
-  return {
-    id: data.id,
-    createdAt: new Date(data.created_at).getTime(),
-    post: data.post_json
-  }
+    .insert([{ user_id: uid, post: safePost }])
+    .select('id, post, created_at, updated_at')
+    .single();
+
+  if (error) throw error;
+  return mapRow(data);
 }
 
 export async function updateDeckPostInSupabase(id, post) {
-  const user = await getUser()
+  const uid = await getUid();
+  if (!uid) throw new Error('Not signed in');
+
+  const safePost = ensurePostShape({ ...post, id: post?.id || id });
+
   const { data, error } = await supabase
     .from('deck_posts')
-    .update({ post_json: sanitizePostForPersist(post) })
+    .update({ post: safePost, updated_at: new Date().toISOString() })
     .eq('id', id)
-    .eq('user_id', user.id)
-    .select('id, created_at, post_json')
-    .maybeSingle()
-  if (error) throw error
-  if (!data) throw new Error('Not found')
-  return {
-    id: data.id,
-    createdAt: new Date(data.created_at).getTime(),
-    post: data.post_json
-  }
+    .eq('user_id', uid)
+    .select('id, post, created_at, updated_at')
+    .single();
+
+  if (error) throw error;
+  return mapRow(data);
 }
 
 export async function deleteDeckPostFromSupabase(id) {
-  const user = await getUser()
+  const uid = await getUid();
+  if (!uid) throw new Error('Not signed in');
+
   const { error } = await supabase
     .from('deck_posts')
     .delete()
     .eq('id', id)
-    .eq('user_id', user.id)
-  if (error) throw error
+    .eq('user_id', uid);
+
+  if (error) throw error;
+  return true;
 }
 
 export async function duplicateDeckPostInSupabase(id) {
-  const user = await getUser()
-  // fetch original
-  const { data: orig, error: selErr } = await supabase
-    .from('deck_posts')
-    .select('post_json')
-    .eq('id', id)
-    .eq('user_id', user.id)
-    .maybeSingle()
-  if (selErr) throw selErr
-  if (!orig) throw new Error('Original not found')
+  const uid = await getUid();
+  if (!uid) throw new Error('Not signed in');
 
-  // insert copy
-  const copyId = crypto.randomUUID()
+  // fetch the source row scoped to the owner
+  const { data: src, error: fetchErr } = await supabase
+    .from('deck_posts')
+    .select('id, post, created_at, updated_at')
+    .eq('id', id)
+    .eq('user_id', uid)
+    .single();
+
+  if (fetchErr) throw fetchErr;
+  if (!src) throw new Error('Source not found');
+
+  const postCopy = ensurePostShape({ ...src.post, id: crypto.randomUUID() });
+
   const { data, error } = await supabase
     .from('deck_posts')
-    .insert({
-      id: copyId,
-      user_id: user.id,
-      post_json: sanitizePostForPersist({ ...orig.post_json, id: crypto.randomUUID() })
-    })
-    .select('id, created_at, post_json')
-    .single()
-  if (error) throw error
+    .insert([{ user_id: uid, post: postCopy }])
+    .select('id, post, created_at, updated_at')
+    .single();
 
-  return {
-    id: data.id,
-    createdAt: new Date(data.created_at).getTime(),
-    post: data.post_json
-  }
+  if (error) throw error;
+  return mapRow(data);
 }
+
