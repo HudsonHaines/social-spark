@@ -1,3 +1,4 @@
+// src/components/LeftPanel.jsx
 import React, { useRef, useState, useMemo } from "react";
 import {
   Settings2, Image as ImageIcon, Video as VideoIcon, Trash2,
@@ -132,20 +133,22 @@ export default function LeftPanel({
   }
 
   return (
-    <div className="bg-white rounded-2xl shadow-sm border overflow-hidden">
+    <div className="bg-white rounded-2xl shadow-sm border overflow-hidden flex flex-col">
       <div className="px-4 py-3 border-b flex items-center gap-2">
         <Settings2 className="w-4 h-4" />
         <span className="font-medium">Controls</span>
       </div>
 
-      <div className="p-4 space-y-6">
+      {/* scrollable body */}
+      <div className="p-4 space-y-6 overflow-auto max-h-[calc(100vh-180px)]">
         {/* Brand */}
         <Section title="Brand">
-          <div className="flex items-center gap-2">
+          {/* Wrapping row with flexible select */}
+          <div className="flex flex-wrap items-center gap-2">
             <select
               id="brand_select"
               name="brand_select"
-              className="select flex-1"
+              className="select min-w-0 w-0 flex-1 max-w-full"
               value={post.brandId || ""}
               onChange={(e) => handlePickBrand(e.target.value || null)}
             >
@@ -157,18 +160,20 @@ export default function LeftPanel({
               ))}
             </select>
 
-            <button className="btn-outline" onClick={() => setShowAdd((s) => !s)}>
-              Add
-            </button>
+            <div className="flex items-center gap-2 shrink-0">
+              <button className="btn-outline" onClick={() => setShowAdd((s) => !s)}>
+                Add
+              </button>
 
-            <button
-              className="btn-outline text-red-600 border-red-200"
-              onClick={handleDeleteSelected}
-              disabled={!post.brandId || saving}
-              title="Delete selected brand"
-            >
-              Delete
-            </button>
+              <button
+                className="btn-outline text-red-600 border-red-200"
+                onClick={handleDeleteSelected}
+                disabled={!post.brandId || saving}
+                title="Delete selected brand"
+              >
+                Delete
+              </button>
+            </div>
           </div>
 
           {showAdd && (
@@ -263,7 +268,7 @@ export default function LeftPanel({
             </div>
 
             {/* Per-post overrides still supported */}
-            <div className="flex-1 grid grid-cols-1 gap-2">
+            <div className="flex-1 grid grid-cols-1 gap-2 min-w-0">
               <label className="text-xs text-slate-500" htmlFor="brand_name">Facebook page name</label>
               <input
                 id="brand_name"
@@ -275,7 +280,7 @@ export default function LeftPanel({
               />
 
               <div className="grid grid-cols-2 gap-2 items-center">
-                <div className="col-span-1">
+                <div className="col-span-1 min-w-0">
                   <label className="text-xs text-slate-500" htmlFor="brand_username">Instagram username</label>
                   <input
                     id="brand_username"
