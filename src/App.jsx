@@ -1,124 +1,144 @@
-import React, { useCallback, useMemo, useRef, useState } from "react";
-import * as htmlToImage from "html-to-image";
-
-import AuthGate from "./auth/AuthGate";
-import { useAuth } from "./auth/AuthProvider";
-
+import React, { useMemo, useRef, useState, useCallback } from "react";
 import AppShell from "./components/AppShell";
 import LeftPanel from "./components/LeftPanel";
 import RightPreview from "./components/RightPreview";
-import TopBar from "./components/TopBar";
+import { emptyPost, ensurePostShape } from "./data/postShape";
+import * as htmlToImage from "html-to-image";
 
-import { ensurePostShape, emptyPost as POST_TEMPLATE } from "./data/postShape";
+const uid = () => Math.random().toString(36).slice(2, 10);
 
 export default function App() {
-  const { user } = useAuth();
+  // App state
+  const [post, setPost] = useState(() => ensurePostShape(emptyPost));
+  const [deck, setDeck] = useState([]); // local-only deck entries
+  const [mode, setMode] = useState("create");
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [brandMgr, setBrandMgr] = useState(false);
+  const [deckMgr, setDeckMgr] = useState(false);
+  const [savingImg, setSavingImg] = useState(false);
+  const previewRef = useRef(null);
+  const videoRef = useRef(null);
 
-  // Layout state
-  const [platform, setPlatform] = useState("facebook");   // "facebook" | "instagram"
-  const [mode, setMode] = useState("create");             // "create" | "present"
+  // fake user object (AuthProvider/ProfileProvider wrap at main.jsx)
+  const user = null;
 
-  // Post state
-  const [post, setPost] = useState(() => ensurePostShape({ ...POST_TEMPLATE, platform }));
+  // keep shape safe
+  const safePost = useMemo(() => ensurePostShape(post), [post]);
 
-  // Deck state (stub)
-  const [deck, setDeck] = useState([]);
-  const [loadingDeck, setLoadingDeck] = useState(false);
-
-  // Keep platform in post when switching tabs
-  const handleSetPlatform = useCallback((next) => {
-    setPlatform(next);
-    setPost((p) => ensurePostShape({ ...p, platform: next }));
+  // updater merges patches
+  const update = useCallback((patch) => {
+    setPost((p) => ensurePostShape({ ...p, ...patch }));
   }, []);
 
-  // Generic post updater
-  const updatePost = useCallback((patch) => {
-    setPost((prev) => ensurePostShape({ ...prev, ...patch }));
-  }, []);
-
-  // Add images — keep mediaMeta in sync and infer type
+  // media helpers
   const handleImageFiles = useCallback(async (fileList) => {
-    const files = Array.from(fileList || []);
+    const files = Array.from(fileList || []).slice(0, 5);
     if (!files.length) return;
-    const urls = await Promise.all(files.map((f) => new Promise((res) => {
-      const r = new FileReader();
-      r.onload = () => res(r.result);
-      r.readAsDataURL(f);
-    })));
-    setPost((prev) => {
-      const p = ensurePostShape(prev || {});
-      const nextMedia = [...(p.media || []), ...urls].slice(0, 5);
-      // pad mediaMeta to same length
-      const nextMeta = [...(p.mediaMeta || [])];
-      while (nextMeta.length < nextMedia.length) nextMeta.push({ headline: "" });
-      const nextType = p.type === "video" ? "video" : (nextMedia.length > 1 ? "carousel" : "single");
+
+    const datas = await Promise.all(
+      files.map(
+        (f) =>
+          new Promise((res, rej) => {
+            const reader = new FileReader();
+            reader.onload = () => res(reader.result);
+            reader.onerror = rej;
+            reader.readAsDataURL(f);
+          })
+      )
+    );
+
+    setPost((p) => {
+      const prev = ensurePostShape(p);
+      const media = [...(prev.media || []), ...datas].slice(0, 5);
+      const nextType = (prev.type === "video" ? "single" : media.length > 1 ? "carousel" : "single");
+      // normalize mediaMeta
+      const meta = Array.from({ length: media.length }, (_, i) => prev.mediaMeta?.[i] || { headline: "" });
+      return ensurePostShape({ ...prev, media, mediaMeta: meta, type: nextType, videoSrc: "" });
+    });
+  }, []);
+
+  const handleVideoFile = useCallback(async (file) => {
+    if (!file) return;
+    const data = await new Promise((res, rej) => {
+      const reader = new FileReader();
+      reader.onload = () => res(reader.result);
+      reader.onerror = rej;
+      reader.readAsDataURL(file);
+    });
+    setPost((p) => ensurePostShape({ ...p, videoSrc: data, type: "video" }));
+  }, []);
+
+  const clearVideo = useCallback(() => {
+    setPost((p) => ensurePostShape({ ...p, videoSrc: "", type: "single" }));
+  }, []);
+
+  const removeImageAt = useCallback((idx) => {
+    setPost((p) => {
+      const prev = ensurePostShape(p);
+      const media = (prev.media || []).slice();
+      if (idx < 0 || idx >= media.length) return prev;
+      media.splice(idx, 1);
+      const meta = (prev.mediaMeta || []).slice();
+      meta.splice(idx, 1);
+      const nextType = media.length > 1 ? "carousel" : "single";
+      const nextActive = Math.max(0, Math.min(prev.activeIndex || 0, (media.length || 1) - 1));
       return ensurePostShape({
-        ...p,
-        media: nextMedia,
-        mediaMeta: nextMeta.slice(0, nextMedia.length),
-        type: nextType,
-        videoSrc: "",
+        ...prev,
+        media,
+        mediaMeta: meta,
+        type: prev.type === "video" ? "video" : nextType,
+        activeIndex: nextActive,
       });
     });
   }, []);
 
-  // Add video
-  const handleVideoFile = useCallback(async (file) => {
-    const url = await new Promise((res) => {
-      const r = new FileReader();
-      r.onload = () => res(r.result);
-      r.readAsDataURL(file);
-    });
-    updatePost({ videoSrc: url, type: "video" });
-  }, [updatePost]);
+  const onDrop = useCallback(
+    async (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const dt = e.dataTransfer;
+      if (!dt) return;
 
-  const clearVideo = useCallback(() => updatePost({ videoSrc: "", type: "single" }), [updatePost]);
+      const imgs = [];
+      let vid = null;
 
-  // Remove image — keep mediaMeta in sync
-  const removeImageAt = useCallback((i) => {
-    setPost((prev) => {
-      const p = ensurePostShape(prev || {});
-      const media = [...(p.media || [])];
-      const meta = [...(p.mediaMeta || [])];
-      if (i < 0 || i >= media.length) return p;
-      media.splice(i, 1);
-      meta.splice(i, 1);
-      const activeIndex = Math.max(0, Math.min(p.activeIndex, media.length - 1));
-      const type = media.length > 1 ? "carousel" : "single";
-      return ensurePostShape({ ...p, media, mediaMeta: meta, activeIndex, type });
-    });
-  }, []);
+      for (const item of Array.from(dt.files || [])) {
+        if (item.type.startsWith("image/")) imgs.push(item);
+        else if (!vid && item.type.startsWith("video/")) vid = item;
+      }
 
-  // Drag-drop
-  const onDrop = useCallback(async (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    const dt = e.dataTransfer;
-    if (!dt) return;
-    const images = Array.from(dt.files || []).filter((f) => f.type.startsWith("image/"));
-    const videos = Array.from(dt.files || []).filter((f) => f.type.startsWith("video/"));
-    if (videos[0]) return handleVideoFile(videos[0]);
-    if (images.length) return handleImageFiles(images);
-  }, [handleImageFiles, handleVideoFile]);
+      if (imgs.length) await handleImageFiles(imgs);
+      if (vid) await handleVideoFile(vid);
+    },
+    [handleImageFiles, handleVideoFile]
+  );
 
-  // Deck actions (stub)
-  const addToDeck = useCallback(() => {
-    setLoadingDeck(true);
-    setDeck((d) => [{ id: crypto.randomUUID(), createdAt: Date.now(), post }, ...d]);
-    setLoadingDeck(false);
-  }, [post]);
+  // deck helpers (local only for now)
+  const addToDeck = useCallback(
+    (p) => {
+      const item = {
+        id: uid(),
+        createdAt: Date.now(),
+        post: ensurePostShape(p || post),
+      };
+      setDeck((d) => [item, ...d]);
+    },
+    [post]
+  );
 
   const duplicateToDeck = useCallback((id) => {
     setDeck((d) => {
-      const item = d.find((x) => x.id === id);
-      return item ? [{ id: crypto.randomUUID(), createdAt: Date.now(), post: item.post }, ...d] : d;
+      const it = d.find((x) => x.id === id);
+      if (!it) return d;
+      const clone = { ...it, id: uid(), createdAt: Date.now() };
+      return [clone, ...d];
     });
   }, []);
 
   const loadFromDeck = useCallback((id) => {
     setDeck((d) => {
-      const item = d.find((x) => x.id === id);
-      if (item) setPost(ensurePostShape(item.post));
+      const it = d.find((x) => x.id === id);
+      if (it) setPost(ensurePostShape(it.post));
       return d;
     });
   }, []);
@@ -127,71 +147,93 @@ export default function App() {
     setDeck((d) => d.filter((x) => x.id !== id));
   }, []);
 
-  const startPresentingDeck = useCallback(() => {
+  const startPresentingDeck = useCallback((id) => {
     setMode("present");
+    if (id) loadFromDeck(id);
+  }, [loadFromDeck]);
+
+  // export as PNG (2x)
+  const saveAsPng = useCallback(async () => {
+    if (!previewRef.current) return;
+    setSavingImg(true);
+    try {
+      const node = previewRef.current;
+      const dataUrl = await htmlToImage.toPng(node, {
+        pixelRatio: 2,
+        cacheBust: true,
+        quality: 1,
+      });
+      const a = document.createElement("a");
+      a.href = dataUrl;
+      a.download = `mockup-${Date.now()}.png`;
+      a.click();
+    } catch (err) {
+      console.error("PNG export failed", err);
+      alert("PNG export failed. Check console.");
+    } finally {
+      setSavingImg(false);
+    }
   }, []);
 
-  // Preview ref for PNG export
-  const previewRef = useRef(null);
 
-  const handleExportPNG = useCallback(async () => {
-    if (!previewRef.current) return;
-    const dataUrl = await htmlToImage.toPng(previewRef.current, {
-      pixelRatio: 2,
-      cacheBust: true,
-      backgroundColor: "#ffffff",
-    });
-    const a = document.createElement("a");
-    a.href = dataUrl;
-    const ts = new Date().toISOString().replace(/[:.]/g, "-");
-    a.download = `social-spark-${post.platform}-${ts}.png`;
-    a.click();
-  }, [post.platform]);
-
-  const shellProps = useMemo(() => ({
-    platform, setPlatform: handleSetPlatform,
-    mode, setMode,
-    onExportPNG: handleExportPNG,
-    user,
-  }), [platform, handleSetPlatform, mode, setMode, handleExportPNG, user]);
-
-  const leftProps = useMemo(() => ({
-    user,
-    post,
-    update: updatePost,
-    onDrop,
-    handleImageFiles,
-    handleVideoFile,
-    clearVideo,
-    removeImageAt,
-    addToDeck,
-    duplicateToDeck,
-    deck,
-    loadFromDeck,
-    deleteFromDeck,
-    startPresentingDeck,
-    loadingDeck,
-  }), [
-    user, post, updatePost, onDrop, handleImageFiles, handleVideoFile, clearVideo,
-    removeImageAt, addToDeck, duplicateToDeck, deck, loadFromDeck,
-    deleteFromDeck, startPresentingDeck, loadingDeck
-  ]);
-
-  const rightProps = useMemo(() => ({
-    user,
-    post,
-    setPost, // needed for carousel arrows to update activeIndex
-  }), [user, post, setPost]);
 
   return (
-    <AuthGate>
-      <AppShell
-        topBar={<TopBar {...shellProps} />}
-        left={mode === "create" ? <LeftPanel {...leftProps} /> : null}
-        right={<RightPreview {...rightProps} />}
-        previewRef={previewRef}
-        mode={mode}
-      />
-    </AuthGate>
-  );
+  <>
+
+    {/* Your app */}
+    <AppShell
+      topBarProps={{
+        platform: safePost.platform,
+        setPlatform: (p) => update({ platform: p }),
+        mode,
+        setMode,
+        onExportPNG: saveAsPng,
+        user,
+        onOpenMenu: () => setMenuOpen(true),
+      }}
+      leftPanel={
+        <LeftPanel
+          user={user}
+          post={safePost}
+          update={update}
+          onDrop={onDrop}
+          handleImageFiles={handleImageFiles}
+          handleVideoFile={handleVideoFile}
+          clearVideo={clearVideo}
+          removeImageAt={removeImageAt}
+          addToDeck={addToDeck}
+          duplicateToDeck={duplicateToDeck}
+          deck={deck}
+          loadFromDeck={loadFromDeck}
+          deleteFromDeck={deleteFromDeck}
+          startPresentingDeck={startPresentingDeck}
+          loadingDeck={false}
+          openBrandManager={() => setBrandMgr(true)}
+        />
+      }
+      rightPreview={
+        <RightPreview
+          ref={previewRef}
+          post={safePost}
+          setPost={setPost}
+          mode={mode}
+          saveAsPng={saveAsPng}
+          savingImg={savingImg}
+          videoRef={videoRef}
+        />
+      }
+      modals={{
+        brandManagerOpen: brandMgr,
+        onCloseBrandManager: () => setBrandMgr(false),
+        deckManagerOpen: deckMgr,
+        onCloseDeckManager: () => setDeckMgr(false),
+        deckManagerOnOpenForPresent: (id) => {
+          setDeckMgr(false);
+          startPresentingDeck(id);
+        },
+      }}
+    />
+  </>
+);
+
 }

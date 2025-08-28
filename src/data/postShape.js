@@ -2,7 +2,8 @@
 
 export const CTA_OPTIONS = ["Learn More","Shop Now","Sign Up","Download","Book Now","Contact Us"];
 
-export const emptyBrand = { name: "Your Brand", username: "yourbrand", profileSrc: "", verified: false };
+// note: now includes id
+export const emptyBrand = { id: null, name: "Your Brand", username: "yourbrand", profileSrc: "", verified: false };
 export const emptyLink = { headline: "", subhead: "", url: "", cta: CTA_OPTIONS[0] };
 export const emptyMetrics = { likes: 128, comments: 24, shares: 12, saves: 9, views: 10234 };
 
@@ -70,17 +71,26 @@ export function ensurePostShape(p) {
   base.link = {
     headline: typeof link.headline === "string" ? link.headline : "",
     subhead: typeof link.subhead === "string" ? link.subhead : "",
-    url: typeof link.url === "string" ? link.url.trim() : "", // trim added
+    url: typeof link.url === "string" ? link.url.trim() : "",
     cta: CTA_OPTIONS.includes(link.cta) ? link.cta : CTA_OPTIONS[0],
   };
 
-  const brand = src.brand && typeof src.brand === "object" ? src.brand : {};
+  // brand and brandId: keep both fields present and in sync
+  const brandSrc = src.brand && typeof src.brand === "object" ? src.brand : {};
+  const normalizedBrandId =
+    (typeof src.brandId === "string" && src.brandId.length ? src.brandId : null) ??
+    (typeof brandSrc.id === "string" && brandSrc.id.length ? brandSrc.id : null);
+
   base.brand = {
-    name: typeof brand.name === "string" ? brand.name : emptyBrand.name,
-    username: typeof brand.username === "string" ? brand.username : emptyBrand.username,
-    profileSrc: typeof brand.profileSrc === "string" ? brand.profileSrc : "",
-    verified: !!brand.verified,
+    id: (typeof brandSrc.id === "string" && brandSrc.id.length ? brandSrc.id : null) ?? normalizedBrandId,
+    name: typeof brandSrc.name === "string" ? brandSrc.name : emptyBrand.name,
+    username: typeof brandSrc.username === "string" ? brandSrc.username : emptyBrand.username,
+    profileSrc: typeof brandSrc.profileSrc === "string" ? brandSrc.profileSrc : "",
+    verified: !!brandSrc.verified,
   };
+
+  // Sync brandId after brand
+  base.brandId = normalizedBrandId ?? base.brand.id ?? null;
 
   const metrics = src.metrics && typeof src.metrics === "object" ? src.metrics : {};
   base.metrics = {
@@ -90,10 +100,6 @@ export function ensurePostShape(p) {
     saves: Number.isFinite(metrics.saves) ? metrics.saves : emptyMetrics.saves,
     views: Number.isFinite(metrics.views) ? metrics.views : emptyMetrics.views,
   };
-
-  // Normalize brandId
-  base.brandId =
-    typeof src.brandId === "string" && src.brandId.length ? src.brandId : null;
 
   // Infer type only if not explicitly set
   if (!base.type || !validTypes.includes(base.type)) {

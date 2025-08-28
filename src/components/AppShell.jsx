@@ -1,28 +1,43 @@
 // src/components/AppShell.jsx
 import React from "react";
+import TopBar from "./TopBar";
+import BrandManager from "../brands/BrandManager";
+import DeckManager from "../decks/DeckManager";
 
-const cx = (...a) => a.filter(Boolean).join(" ");
-
-export default function AppShell({ topBar, left, right, previewRef, mode = "create" }) {
-  const isPresent = mode === "present";
+export default function AppShell({
+  topBarProps = {},
+  leftPanel = null,
+  rightPreview = null,
+  modals = {},
+}) {
+  const {
+    brandManagerOpen = false,
+    onCloseBrandManager = () => {},
+    deckManagerOpen = false,
+    onCloseDeckManager = () => {},
+    deckManagerOnOpenForPresent = null,
+  } = modals;
 
   return (
-    <div className="w-full min-h-screen bg-slate-50 text-slate-900">
-      {topBar}
+    <div className="min-h-screen grid grid-rows-[auto_1fr]">
+      {/* Top bar uses built-in container utilities */}
+      <TopBar
+        {...topBarProps}
+      />
 
-      <div
-        className={cx(
-          "mx-auto max-w-[1400px] p-4 gap-4",
-          isPresent ? "grid grid-cols-1" : "grid grid-cols-1 lg:grid-cols-[460px_minmax(0,1fr)]"
-        )}
-      >
-        {!isPresent ? <div>{left}</div> : null}
+      {/* Main content — built-in Tailwind grid only */}
+      <main className="container mx-auto px-4 py-4 grid gap-4 lg:grid-cols-[360px_1fr]">
+        <section aria-label="Editor" className="min-w-0">{leftPanel}</section>
+        <section aria-label="Live preview" className="min-w-0">{rightPreview}</section>
+      </main>
 
-        {/* Right: preview, ref used for PNG export */}
-        <div ref={previewRef} className={cx(isPresent && "max-w-[640px] mx-auto w-full")}>
-          {right}
-        </div>
-      </div>
+      {brandManagerOpen ? <BrandManager onClose={onCloseBrandManager} /> : null}
+      {deckManagerOpen ? (
+        <DeckManager
+          onClose={onCloseDeckManager}
+          onOpenForPresent={deckManagerOnOpenForPresent}
+        />
+      ) : null}
     </div>
   );
 }
