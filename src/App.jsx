@@ -4,11 +4,14 @@ import LeftPanel from "./components/LeftPanel";
 import RightPreview from "./components/RightPreview";
 import { emptyPost, ensurePostShape } from "./data/postShape";
 import * as htmlToImage from "html-to-image";
+import { useAuth } from "./auth/AuthProvider";
 
 const uid = () => Math.random().toString(36).slice(2, 10);
 
 export default function App() {
-  // App state
+  const { user } = useAuth();
+
+  // Core app state
   const [post, setPost] = useState(() => ensurePostShape(emptyPost));
   const [deck, setDeck] = useState([]); // local-only deck entries
   const [mode, setMode] = useState("create");
@@ -16,21 +19,19 @@ export default function App() {
   const [brandMgr, setBrandMgr] = useState(false);
   const [deckMgr, setDeckMgr] = useState(false);
   const [savingImg, setSavingImg] = useState(false);
+
   const previewRef = useRef(null);
   const videoRef = useRef(null);
-
-  // fake user object (AuthProvider/ProfileProvider wrap at main.jsx)
-  const user = null;
 
   // keep shape safe
   const safePost = useMemo(() => ensurePostShape(post), [post]);
 
-  // updater merges patches
+  // updater merges patches and re-normalizes shape
   const update = useCallback((patch) => {
     setPost((p) => ensurePostShape({ ...p, ...patch }));
   }, []);
 
-  // media helpers
+  // -------- Media helpers --------
   const handleImageFiles = useCallback(async (fileList) => {
     const files = Array.from(fileList || []).slice(0, 5);
     if (!files.length) return;
@@ -50,7 +51,7 @@ export default function App() {
     setPost((p) => {
       const prev = ensurePostShape(p);
       const media = [...(prev.media || []), ...datas].slice(0, 5);
-      const nextType = (prev.type === "video" ? "single" : media.length > 1 ? "carousel" : "single");
+      const nextType = prev.type === "video" ? "single" : media.length > 1 ? "carousel" : "single";
       // normalize mediaMeta
       const meta = Array.from({ length: media.length }, (_, i) => prev.mediaMeta?.[i] || { headline: "" });
       return ensurePostShape({ ...prev, media, mediaMeta: meta, type: nextType, videoSrc: "" });
@@ -113,7 +114,7 @@ export default function App() {
     [handleImageFiles, handleVideoFile]
   );
 
-  // deck helpers (local only for now)
+  // -------- Deck helpers (local for now) --------
   const addToDeck = useCallback(
     (p) => {
       const item = {
@@ -147,12 +148,15 @@ export default function App() {
     setDeck((d) => d.filter((x) => x.id !== id));
   }, []);
 
-  const startPresentingDeck = useCallback((id) => {
-    setMode("present");
-    if (id) loadFromDeck(id);
-  }, [loadFromDeck]);
+  const startPresentingDeck = useCallback(
+    (id) => {
+      setMode("present");
+      if (id) loadFromDeck(id);
+    },
+    [loadFromDeck]
+  );
 
-  // export as PNG (2x)
+  // -------- Export as PNG (2x) --------
   const saveAsPng = useCallback(async () => {
     if (!previewRef.current) return;
     setSavingImg(true);
@@ -175,12 +179,7 @@ export default function App() {
     }
   }, []);
 
-
-
   return (
-  <>
-
-    {/* Your app */}
     <AppShell
       topBarProps={{
         platform: safePost.platform,
@@ -233,7 +232,5 @@ export default function App() {
         },
       }}
     />
-  </>
-);
-
+  );
 }

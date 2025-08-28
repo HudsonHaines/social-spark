@@ -1,78 +1,68 @@
-// src/profile/ProfileButton.jsx
 import React, { useState, useRef, useEffect } from "react";
-import { LogOut } from "lucide-react";
-import { supabase } from "../lib/supabaseClient";
+import { useAuth } from "../auth/AuthProvider";
 
-function getDisplay(user) {
-  if (!user) return { name: "Guest", email: "", avatar: "" };
-  const meta = user.user_metadata || {};
-  const name =
-    meta.full_name ||
-    meta.name ||
-    meta.user_name ||
-    meta.preferred_username ||
-    "";
-  const email = user.email || "";
-  const avatar = meta.avatar_url || meta.picture || "";
-  return { name: name || email || "Account", email, avatar };
-}
-
-export default function ProfileButton({ user }) {
+export default function ProfileButton() {
+  const { user, signOut } = useAuth();
   const [open, setOpen] = useState(false);
-  const btnRef = useRef(null);
-  const { name, email, avatar } = getDisplay(user);
+  const ref = useRef(null);
 
+  const label = user?.email || "Guest";
+
+  // Close dropdown if clicking outside
   useEffect(() => {
-    const onDoc = (e) => {
-      if (!btnRef.current) return;
-      if (!btnRef.current.contains(e.target)) setOpen(false);
-    };
-    document.addEventListener("mousedown", onDoc);
-    return () => document.removeEventListener("mousedown", onDoc);
+    function handleClickOutside(e) {
+      if (ref.current && !ref.current.contains(e.target)) {
+        setOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  const signOut = async () => {
-    await supabase.auth.signOut();
-    // Supabase AuthProvider should handle UI update on sign out
-  };
-
   return (
-    <div className="relative" ref={btnRef}>
+    <div ref={ref} className="relative">
+      {/* Button */}
       <button
-        type="button"
-        className="flex items-center gap-2 px-2 py-1 rounded-lg hover:bg-slate-100"
-        onClick={() => setOpen((s) => !s)}
+        onClick={() => setOpen((o) => !o)}
+        className="chip bg-app-surface hover:bg-app-muted border-app"
+        title="Account menu"
       >
-        <div className="w-7 h-7 rounded-full bg-slate-200 overflow-hidden flex items-center justify-center">
-          {avatar ? (
-            <img src={avatar} alt="" className="w-full h-full object-cover" />
-          ) : (
-            <span className="text-xs text-slate-600">
-              {(name || email || "A").slice(0, 1).toUpperCase()}
-            </span>
-          )}
-        </div>
-        <span className="text-sm max-w-[140px] truncate">
-          {name || email || "Account"}
-        </span>
+        <span className="truncate max-w-[160px]">{label}</span>
+        <svg
+          className="w-3.5 h-3.5 ml-1 text-app-muted"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
+          <polyline points="6 9 12 15 18 9" />
+        </svg>
       </button>
 
-      {open ? (
-        <div className="absolute right-0 mt-2 w-56 bg-white border rounded-xl shadow-lg p-2 z-50">
-          <div className="px-2 py-2">
-            <div className="text-sm font-medium truncate">{name || "Account"}</div>
-            {email ? <div className="text-xs text-slate-500 truncate">{email}</div> : null}
+      {/* Dropdown */}
+      {open && (
+        <div className="absolute right-0 mt-2 w-40 bg-white border border-app rounded-lg shadow-lg z-50">
+          <div className="px-3 py-2 border-b border-app text-sm text-app-muted">
+            {user ? "Signed in" : "Not signed in"}
           </div>
-          <div className="h-px bg-slate-200 my-1" />
-          <button
-            className="w-full flex items-center gap-2 px-2 py-2 rounded-lg hover:bg-slate-50 text-sm"
-            onClick={signOut}
-          >
-            <LogOut className="w-4 h-4" />
-            Sign out
-          </button>
+
+          {user ? (
+            <button
+              onClick={() => {
+                signOut();
+                setOpen(false);
+              }}
+              className="w-full text-left px-3 py-2 text-sm text-red-600 hover:bg-app-muted transition"
+            >
+              Sign Out
+            </button>
+          ) : (
+            <div className="px-3 py-2 text-sm text-app-body">Please sign in</div>
+          )}
         </div>
-      ) : null}
+      )}
     </div>
   );
 }

@@ -1,48 +1,46 @@
-import React, { createContext, useContext, useEffect, useState } from 'react';
-import { supabase } from '../lib/supabaseClient';
+import React, { createContext, useContext, useEffect, useState } from "react";
+import { supabase } from "../lib/supabaseClient";
 
-const AuthContext = createContext(null);
+const AuthCtx = createContext(null);
+export const useAuth = () => useContext(AuthCtx);
 
 export function AuthProvider({ children }) {
   const [session, setSession] = useState(null);
-  const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
 
+  // Initial session + listener
   useEffect(() => {
     let mounted = true;
 
-    supabase.auth.getSession().then(({ data }) => {
-      if (!mounted) return;
-      setSession(data.session || null);
-      setUser(data.session?.user || null);
-      setLoading(false);
+    supabase.auth.getSession().then(({ data, error }) => {
+      if (error) console.error("getSession error:", error);
+      if (mounted) {
+        setSession(data?.session ?? null);
+        setLoading(false);
+      }
     });
 
     const { data: sub } = supabase.auth.onAuthStateChange((_event, newSession) => {
-      setSession(newSession);
-      setUser(newSession?.user || null);
+      setSession(newSession ?? null);
       setLoading(false);
     });
 
     return () => {
       mounted = false;
-      sub?.subscription?.unsubscribe();
+      sub?.subscription?.unsubscribe?.();
     };
   }, []);
 
-  const value = {
-    session,
-    user,
-    loading,
-    signInWithGoogle: () => supabase.auth.signInWithOAuth({ provider: 'google' }),
-    signOut: () => supabase.auth.signOut(),
+  const user = session?.user ?? null;
+
+  const signOut = async () => {
+    const { error } = await supabase.auth.signOut();
+    if (error) console.error("signOut error:", error);
   };
 
-  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
-}
-
-export function useAuth() {
-  const ctx = useContext(AuthContext);
-  if (!ctx) throw new Error('useAuth must be used within <AuthProvider>');
-  return ctx;
+  return (
+    <AuthCtx.Provider value={{ user, session, loading, signOut }}>
+      {children}
+    </AuthCtx.Provider>
+  );
 }
