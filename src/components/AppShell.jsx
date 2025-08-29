@@ -4,11 +4,14 @@ import TopBar from "./TopBar";
 import BrandManager from "../brands/BrandManager";
 import DeckManager from "../decks/DeckManager";
 
+const cx = (...a) => a.filter(Boolean).join(" ");
+
 export default function AppShell({
   topBarProps = {},
   leftPanel = null,
   rightPreview = null,
   modals = {},
+  singleColumn = false,
 }) {
   const {
     brandManagerOpen = false,
@@ -18,17 +21,39 @@ export default function AppShell({
     deckManagerOnOpenForPresent = null,
   } = modals;
 
-  return (
-    <div className="min-h-screen grid grid-rows-[auto_1fr]">
-      {/* Top bar uses built-in container utilities */}
-      <TopBar
-        {...topBarProps}
-      />
+  const hasLeft = !!leftPanel;
+  const hasRight = !!rightPreview;
+  const twoCols = hasLeft && hasRight && !singleColumn;
 
-      {/* Main content — built-in Tailwind grid only */}
-      <main className="container mx-auto px-4 py-4 grid gap-4 lg:grid-cols-[360px_1fr]">
-        <section aria-label="Editor" className="min-w-0">{leftPanel}</section>
-        <section aria-label="Live preview" className="min-w-0">{rightPreview}</section>
+  return (
+    <div className="app-shell">
+      <TopBar {...topBarProps} />
+
+      <main
+        className={cx(
+          singleColumn ? "mx-auto w-full max-w-screen-2xl px-4" : "container-tight",
+          "py-4"
+        )}
+        style={singleColumn ? { maxWidth: "1536px" } : undefined}
+      >
+        <div
+          className={cx(
+            "grid gap-4 w-full",
+            twoCols ? "grid-cols-[minmax(320px,420px)_1fr]" : "grid-cols-1"
+          )}
+        >
+          {hasLeft ? (
+            <section aria-label="Primary" className="min-w-0 w-full">
+              {leftPanel}
+            </section>
+          ) : null}
+
+          {hasRight ? (
+            <section aria-label="Live preview" className="min-w-0 w-full">
+              {rightPreview}
+            </section>
+          ) : null}
+        </div>
       </main>
 
       {brandManagerOpen ? <BrandManager onClose={onCloseBrandManager} /> : null}

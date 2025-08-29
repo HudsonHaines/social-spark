@@ -1,3 +1,4 @@
+// src/components/LeftPanel.jsx
 import React, { useRef, useMemo } from "react";
 import {
   Settings2,
@@ -15,7 +16,7 @@ const cx = (...a) => a.filter(Boolean).join(" ");
 function Section({ title, children }) {
   return (
     <div>
-      <div className="text-xs font-semibold uppercase tracking-wide text-app-muted mb-2">
+      <div className="text-xs uppercase tracking-wide label-strong mb-2">
         {title}
       </div>
       <div className="space-y-2">{children}</div>
@@ -27,8 +28,8 @@ function Radio({ label, checked, onChange, name, value, id }) {
   return (
     <label
       className={cx(
-        "px-2 py-1 rounded-[8px] border border-app cursor-pointer select-none text-sm",
-        checked ? "bg-[#0f172a] text-white border-[#0f172a]" : "bg-white hover:bg-app-muted"
+        "px-2 py-1 rounded-md border border-app cursor-pointer select-none text-sm",
+        checked ? "bg-app-strong text-white border-app" : "bg-app-surface hover:bg-app-muted"
       )}
       htmlFor={id}
     >
@@ -57,7 +58,7 @@ export default function LeftPanel(props) {
     handleVideoFile,
     clearVideo,
     removeImageAt,
-    // deck
+    // deck (local)
     addToDeck,
     duplicateToDeck,
     deck,
@@ -65,8 +66,11 @@ export default function LeftPanel(props) {
     deleteFromDeck,
     startPresentingDeck,
     loadingDeck,
-    // global brand manager opener
+    // brand manager
     openBrandManager,
+    // save helpers
+    saveToDeck,
+    openDeckPicker,
   } = props;
 
   if (!post) return null;
@@ -79,7 +83,7 @@ export default function LeftPanel(props) {
 
   // Resolve a safe brand id whether state uses brandId or brand.id
   const safeBrandId = useMemo(
-    () => post?.brandId ?? post?.brand?.id ?? "",
+    () => (post?.brandId ?? post?.brand?.id ?? null),
     [post?.brandId, post?.brand?.id]
   );
 
@@ -98,6 +102,7 @@ export default function LeftPanel(props) {
     }
     const profileSrc =
       post.platform === "facebook" ? row.fb_avatar_url || "" : row.ig_avatar_url || "";
+
     update({
       brandId: row.id,
       brand: {
@@ -116,19 +121,16 @@ export default function LeftPanel(props) {
   }
 
   return (
-    <div className="panel flex flex-col">
-      <div className="panel-header">
-        <div className="flex items-center gap-2">
-          <Settings2 className="w-4 h-4" />
-          <span className="font-medium text-app-strong">Controls</span>
-        </div>
+    <div className="panel overflow-hidden flex flex-col">
+      <div className="panel-header flex items-center gap-2">
+        <Settings2 className="w-4 h-4 text-app-body" />
+        <span className="font-medium text-app-strong">Controls</span>
       </div>
 
       {/* scrollable body */}
-      <div className="p-4 space-y-6 overflow-auto max-h-[calc(100vh-180px)]">
+      <div className="p-4 space-y-6 overflow-auto max-h-[calc(100vh-180px)] bg-app-surface">
         {/* Brand */}
         <Section title="Brand">
-          {/* Wrapping row with flexible select */}
           <div className="flex flex-wrap items-center gap-2">
             <select
               id="brand_select"
@@ -178,7 +180,7 @@ export default function LeftPanel(props) {
               </div>
             </div>
 
-            {/* Per-post overrides still supported */}
+            {/* Per-post overrides */}
             <div className="flex-1 grid grid-cols-1 gap-2 min-w-0">
               <label className="text-xs text-app-muted" htmlFor="brand_name">
                 Facebook page name
@@ -254,7 +256,7 @@ export default function LeftPanel(props) {
         {/* Media */}
         <Section title="Media">
           <div className="flex items-center gap-2 pb-2 flex-wrap">
-            {/* Images: auto chooses single vs carousel based on count */}
+            {/* Images */}
             <Radio
               id="type_images"
               name="media_type"
@@ -311,7 +313,7 @@ export default function LeftPanel(props) {
               e.stopPropagation();
             }}
             onDrop={onDrop}
-            className="border-2 border-dashed rounded-[12px] p-4 text-center bg-app-muted"
+            className="border-2 border-dashed rounded-xl p-4 text-center bg-app-muted border-app"
           >
             <p className="text-sm mb-2">Drag files here, or</p>
             <div className="flex items-center justify-center gap-2 flex-wrap">
@@ -357,8 +359,8 @@ export default function LeftPanel(props) {
                 <div
                   key={i}
                   className={cx(
-                    "relative rounded-[12px] overflow-hidden border border-app cursor-pointer",
-                    i === post.activeIndex ? "ring-2 ring-[#3b82f6]" : ""
+                    "relative rounded-lg overflow-hidden border-app border cursor-pointer",
+                    i === post.activeIndex ? "ring-2 ring-brand-500" : ""
                   )}
                   onClick={() => update({ activeIndex: i })}
                 >
@@ -472,15 +474,16 @@ export default function LeftPanel(props) {
         {/* Deck actions */}
         <Section title="Deck (multiple posts)">
           <div className="flex items-center gap-2">
-            <button
-              className="btn"
-              onClick={async () => {
-                // Simple local add (keeps flow working)
-                addToDeck(post);
-              }}
-            >
+            <button className="btn" onClick={() => openDeckPicker?.()}>
               <ImageIcon className="w-4 h-4 mr-1" />
               Add this post to deck
+            </button>
+            <button
+              className="btn-outline"
+              title="Quick save with title prompt"
+              onClick={() => saveToDeck?.()}
+            >
+              Quick save
             </button>
             {deck.length ? (
               <button
@@ -499,10 +502,10 @@ export default function LeftPanel(props) {
               {deck.map((d) => (
                 <div
                   key={d.id}
-                  className="flex items-center justify-between border border-app rounded-[12px] p-2 hover:bg-app-muted"
+                  className="flex items-center justify-between border border-app rounded-lg p-2 hover:bg-app-muted"
                 >
                   <div className="text-sm">
-                    <div className="font-medium">
+                    <div className="font-medium text-app-strong">
                       {new Date(d.createdAt).toLocaleString()}
                     </div>
                     <div className="text-xs text-app-muted">
