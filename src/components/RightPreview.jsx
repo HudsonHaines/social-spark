@@ -12,6 +12,8 @@ const RightPreview = forwardRef(function RightPreview(
     saveAsPng,
     savingImg = false,
     videoRef,         // optional
+    clamp,            // { maxVmin?: number, maxPx?: number } optional
+    showExport = true // set false to hide the Export button
   },
   previewRef
 ) {
@@ -22,9 +24,9 @@ const RightPreview = forwardRef(function RightPreview(
   // IG always square; FB square if fbSquare true, else 16:9
   const isSquare = p.platform === "instagram" || (p.platform === "facebook" && p.fbSquare);
 
-  // Fit to viewport: use smaller vmin cap in editor, larger in presenter
-  const maxVmin = mode === "present" ? 96 : 80;       // percent of vmin
-  const maxPx = mode === "present" ? 720 : 560;       // hard pixel cap
+  // Size clamp: defaults by mode, overridable via prop
+  const defaults = mode === "present" ? { maxVmin: 96, maxPx: 720 } : { maxVmin: 80, maxPx: 560 };
+  const { maxVmin, maxPx } = { ...defaults, ...(clamp || {}) };
   const wrapperStyle = { width: "100%", maxWidth: `min(${maxPx}px, ${maxVmin}vmin)` };
 
   // Clamp active index when media count changes
@@ -71,11 +73,13 @@ const RightPreview = forwardRef(function RightPreview(
   return (
     <div className={cx(p.platform === "instagram" ? "ig-ui" : "fb-ui")}>
       {/* actions */}
-      <div className="flex justify-end mb-2">
-        <button className="btn-outline" disabled={savingImg} onClick={saveAsPng}>
-          {savingImg ? "Rendering..." : "Export PNG"}
-        </button>
-      </div>
+      {showExport ? (
+        <div className="flex justify-end mb-2">
+          <button className="btn-outline" disabled={savingImg} onClick={saveAsPng}>
+            {savingImg ? "Rendering..." : "Export PNG"}
+          </button>
+        </div>
+      ) : null}
 
       {/* main card */}
       <div className="mx-auto" style={wrapperStyle}>

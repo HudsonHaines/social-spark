@@ -1,4 +1,3 @@
-// src/decks/DecksPage.jsx
 import React, { useEffect, useMemo, useState } from "react";
 import {
   listDecks,
@@ -9,6 +8,7 @@ import {
 } from "../data/decks";
 import { ensurePostShape } from "../data/postShape";
 import { Trash2, Plus, Play, ArrowLeft, Image as ImageIcon, Images, Film } from "lucide-react";
+import PostPreviewModal from "./PostPreviewModal";
 
 const cx = (...a) => a.filter(Boolean).join(" ");
 
@@ -16,13 +16,18 @@ export default function DecksPage({
   userId,
   currentPost,
   onBack,
-  onPresent, // (deckId) => void
+  onPresent,          // (deckId) => void
+  onLoadToEditor,     // optional: (post) => void
 }) {
   const [loadingDecks, setLoadingDecks] = useState(true);
   const [loadingItems, setLoadingItems] = useState(false);
   const [decks, setDecks] = useState([]);
   const [activeId, setActiveId] = useState(null); // store as string
   const [items, setItems] = useState([]);
+
+  // modal preview
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [previewPost, setPreviewPost] = useState(null);
 
   const activeDeck = useMemo(
     () => decks.find((d) => String(d.id) === activeId) || null,
@@ -50,9 +55,7 @@ export default function DecksPage({
       }
     }
     run();
-    return () => {
-      mounted = false;
-    };
+    return () => { mounted = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userId]);
 
@@ -75,9 +78,7 @@ export default function DecksPage({
       }
     }
     loadItems();
-    return () => {
-      mounted = false;
-    };
+    return () => { mounted = false; };
   }, [activeId]);
 
   async function handleAddCurrent() {
@@ -121,6 +122,11 @@ export default function DecksPage({
       console.error(e);
       alert("Could not delete post.");
     }
+  }
+
+  function openPreview(pj) {
+    setPreviewPost(ensurePostShape(pj || {}));
+    setPreviewOpen(true);
   }
 
   return (
@@ -221,12 +227,12 @@ export default function DecksPage({
                             />
                             <div className="min-w-0">
                               <div className="font-medium truncate">{d.title}</div>
-                              <div className="text-xs text-app-muted">
+                              <div className="text-app-muted text-xs">
                                 {new Date(d.created_at).toLocaleString()}
                               </div>
                             </div>
                           </div>
-                          <div className="text-xs chip">{d.count ?? ""}</div>
+                          <div className="chip">{d.count ?? ""}</div>
                         </div>
                       </li>
                     );
@@ -276,7 +282,11 @@ export default function DecksPage({
                     (pj.type || "single");
 
                   return (
-                    <li key={it.id} className="border border-app rounded-lg overflow-hidden">
+                    <li
+                      key={it.id}
+                      className="border border-app rounded-lg overflow-hidden cursor-pointer"
+                      onClick={() => openPreview(pj)}
+                    >
                       <div className="relative aspect-square bg-app-muted">
                         {thumb ? (
                           pj.type === "video" ? (
@@ -312,13 +322,16 @@ export default function DecksPage({
 
                       <div className="p-2">
                         <div className="text-sm truncate">{label}</div>
-                        <div className="text-xs text-app-muted">
+                        <div className="text-app-muted text-xs">
                           {new Date(it.created_at).toLocaleString()}
                         </div>
                         <div className="flex items-center justify-end gap-2 mt-2">
                           <button
                             className="chip"
-                            onClick={() => handleDeleteItem(it.id)}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleDeleteItem(it.id);
+                            }}
                             title="Remove from deck"
                           >
                             <Trash2 className="w-3 h-3 mr-1" />
@@ -334,6 +347,13 @@ export default function DecksPage({
           </div>
         </div>
       </div>
+
+      <PostPreviewModal
+        open={previewOpen}
+        onClose={() => setPreviewOpen(false)}
+        post={previewPost}
+        onLoadToEditor={onLoadToEditor}
+      />
     </div>
   );
 }

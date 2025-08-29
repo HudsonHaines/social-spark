@@ -27,7 +27,7 @@
 
     /* Surface */
     --app-surface:   #ffffff;
-    --app-muted:     #f1f3f7;
+    --app-muted:     #D3D3D3;
     --app-border:    #e5e7eb;
     --app-strong:    #111827; /* titles */
     --app-body:      #334155; /* paragraphs */
@@ -171,6 +171,9 @@
 
   .grid-cols-editor {
     grid-template-columns: minmax(320px, 420px) 1fr;
+  }
+  .text-app-muted {
+    color: #aaa !important;
   }
 }
 
