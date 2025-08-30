@@ -1,3 +1,4 @@
+// src/share/ShareViewer.jsx
 import React, { useEffect, useMemo, useState, useCallback } from "react";
 import RightPreview from "../components/RightPreview";
 import { ensurePostShape } from "../data/postShape";
@@ -15,8 +16,8 @@ export default function ShareViewer({ token }) {
     [posts, idx]
   );
 
-  const goPrev = useCallback(() => setIdx((i) => (i - 1 + posts.length) % posts.length), [posts.length]);
-  const goNext = useCallback(() => setIdx((i) => (i + 1) % posts.length), [posts.length]);
+  const goPrev = useCallback(() => setIdx((i) => (posts.length ? (i - 1 + posts.length) % posts.length : 0)), [posts.length]);
+  const goNext = useCallback(() => setIdx((i) => (posts.length ? (i + 1) % posts.length : 0)), [posts.length]);
 
   useEffect(() => {
     (async () => {
@@ -62,19 +63,20 @@ export default function ShareViewer({ token }) {
         </div>
       </div>
 
-      <div className="w-full max-w-screen-lg">
+      <div className="w-full max-w-screen-lg flex-1 min-h-0 flex items-start justify-center">
         {loading ? (
-          <div className="card p-8 text-center">Loading...</div>
+          <div className="card p-8 text-center w-full">Loading...</div>
         ) : err ? (
-          <div className="card p-8 text-center text-red-600">{err}</div>
+          <div className="card p-8 text-center text-red-600 w-full">{err}</div>
         ) : posts.length === 0 ? (
-          <div className="card p-8 text-center text-app-muted">No posts in this deck</div>
+          <div className="card p-8 text-center text-app-muted w-full">No posts in this deck</div>
         ) : (
           <RightPreview
             post={post}
             setPost={() => {}}
             mode="present"
-            clamp={{ maxVmin: 90, maxPx: 720 }}
+            // Smaller than editor and presenter defaults so it fits comfortably
+            clamp={{ maxVmin: 68, maxPx: 560 }}
             showExport={false}
           />
         )}
