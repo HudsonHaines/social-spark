@@ -1,3 +1,4 @@
+// src/decks/DecksPage.jsx
 import React, { useEffect, useMemo, useState } from "react";
 import {
   listDecks,
@@ -5,9 +6,19 @@ import {
   addItemToDeck,
   deleteDeck,
   deleteDeckItem,
+  createDeckShare,
 } from "../data/decks";
 import { ensurePostShape } from "../data/postShape";
-import { Trash2, Plus, Play, ArrowLeft, Image as ImageIcon, Images, Film } from "lucide-react";
+import {
+  Trash2,
+  Plus,
+  Play,
+  ArrowLeft,
+  Image as ImageIcon,
+  Images,
+  Film,
+  Link as LinkIcon,
+} from "lucide-react";
 import PostPreviewModal from "./PostPreviewModal";
 
 const cx = (...a) => a.filter(Boolean).join(" ");
@@ -16,8 +27,8 @@ export default function DecksPage({
   userId,
   currentPost,
   onBack,
-  onPresent,          // (deckId) => void
-  onLoadToEditor,     // optional: (post) => void
+  onPresent, // (deckId) => void
+  onLoadToEditor, // optional: (post) => void
 }) {
   const [loadingDecks, setLoadingDecks] = useState(true);
   const [loadingItems, setLoadingItems] = useState(false);
@@ -55,7 +66,9 @@ export default function DecksPage({
       }
     }
     run();
-    return () => { mounted = false; };
+    return () => {
+      mounted = false;
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userId]);
 
@@ -78,7 +91,9 @@ export default function DecksPage({
       }
     }
     loadItems();
-    return () => { mounted = false; };
+    return () => {
+      mounted = false;
+    };
   }, [activeId]);
 
   async function handleAddCurrent() {
@@ -124,6 +139,19 @@ export default function DecksPage({
     }
   }
 
+  async function handleShare() {
+    if (!activeDeck) return;
+    try {
+      const token = await createDeckShare(activeDeck.id, { days: 7 });
+      const url = `${window.location.origin}/s/${encodeURIComponent(token)}`;
+      await navigator.clipboard.writeText(url);
+      alert("Share link copied");
+    } catch (e) {
+      console.error(e);
+      alert("Could not create share link.");
+    }
+  }
+
   function openPreview(pj) {
     setPreviewPost(ensurePostShape(pj || {}));
     setPreviewOpen(true);
@@ -148,6 +176,15 @@ export default function DecksPage({
           >
             <Play className="w-4 h-4 mr-1" />
             Present
+          </button>
+          <button
+            className="btn-outline"
+            disabled={!activeDeck}
+            onClick={handleShare}
+            title="Create a public preview link"
+          >
+            <LinkIcon className="w-4 h-4 mr-1" />
+            Share
           </button>
           <button
             className="btn-outline"

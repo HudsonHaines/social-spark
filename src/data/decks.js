@@ -25,10 +25,7 @@ export async function createDeck(userId, title) {
 
 // Delete a deck
 export async function deleteDeck(deckId) {
-  const { error } = await supabase
-    .from("decks")
-    .delete()
-    .eq("id", deckId);
+  const { error } = await supabase.from("decks").delete().eq("id", deckId);
   if (error) throw error;
   return true;
 }
@@ -57,7 +54,7 @@ export async function addItemToDeck(deckId, postJson, orderIndex = null) {
   return data;
 }
 
-// ✅ Fetch all posts inside a deck
+// Fetch all posts inside a deck
 export async function listDeckItems(deckId) {
   const { data, error } = await supabase
     .from("deck_items")
@@ -70,10 +67,7 @@ export async function listDeckItems(deckId) {
 
 // Delete a specific post from a deck
 export async function deleteDeckItem(itemId) {
-  const { error } = await supabase
-    .from("deck_items")
-    .delete()
-    .eq("id", itemId);
+  const { error } = await supabase.from("deck_items").delete().eq("id", itemId);
   if (error) throw error;
   return true;
 }
@@ -96,4 +90,41 @@ export async function reorderDeckItems(deckId, orderedIds) {
 export async function openDeck(deckId) {
   const items = await listDeckItems(deckId);
   return items.map((row) => row.post_json);
+}
+
+/* -------- Sharing helpers -------- */
+
+function randomToken(len = 32) {
+  const bytes = new Uint8Array(len);
+  crypto.getRandomValues(bytes);
+  return btoa(String.fromCharCode(...bytes))
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/, "");
+}
+
+export async function createDeckShare(deckId, { days = 7 } = {}) {
+  const token = randomToken(32);
+  const expires_at =
+    days && days > 0
+      ? new Date(Date.now() + days * 86400000).toISOString()
+      : null;
+
+  const { data, error } = await supabase
+    .from("deck_shares")
+    .insert([{ deck_id: deckId, token, expires_at }])
+    .select("token")
+    .single();
+
+  if (error) throw error;
+  return data.token;
+}
+
+export async function revokeDeckShare(token) {
+  const { error } = await supabase
+    .from("deck_shares")
+    .update({ is_revoked: true })
+    .eq("token", token);
+  if (error) throw error;
+  return true;
 }
