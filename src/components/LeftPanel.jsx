@@ -15,11 +15,9 @@ const cx = (...a) => a.filter(Boolean).join(" ");
 
 function Section({ title, children }) {
   return (
-    <div>
-      <div className="text-xs uppercase tracking-wide label-strong mb-2">
-        {title}
-      </div>
-      <div className="space-y-2">{children}</div>
+    <div className="space-y-3">
+      <div className="label-strong">{title}</div>
+      <div className="space-y-3">{children}</div>
     </div>
   );
 }
@@ -28,8 +26,10 @@ function Radio({ label, checked, onChange, name, value, id }) {
   return (
     <label
       className={cx(
-        "px-2 py-1 rounded-md border border-app cursor-pointer select-none text-sm",
-        checked ? "bg-app-strong text-white border-app" : "bg-app-surface hover:bg-app-muted"
+        "px-3 py-2 rounded-lg border cursor-pointer select-none text-sm transition-colors",
+        checked 
+          ? "bg-app-strong text-white border-app-strong" 
+          : "bg-white hover:bg-slate-50 border-app-border"
       )}
       htmlFor={id}
     >
@@ -38,12 +38,51 @@ function Radio({ label, checked, onChange, name, value, id }) {
         name={name}
         value={value}
         type="radio"
-        className="hidden"
+        className="sr-only"
         checked={checked}
         onChange={onChange}
       />
       {label}
     </label>
+  );
+}
+
+// NEW: Platform Selector Component
+function PlatformSelector({ platform, setPlatform }) {
+  return (
+    <div className="space-y-3">
+      <div className="flex gap-2">
+        <button
+          className={cx(
+            "btn-outline flex-1 flex items-center justify-center",
+            platform === "facebook" ? "bg-blue-50 border-blue-300 text-blue-700" : ""
+          )}
+          onClick={() => setPlatform("facebook")}
+          aria-pressed={platform === "facebook"}
+        >
+          <span className="text-blue-600 mr-2 font-bold text-lg">f</span>
+          Facebook
+        </button>
+        <button
+          className={cx(
+            "btn-outline flex-1 flex items-center justify-center",
+            platform === "instagram" ? "bg-pink-50 border-pink-300 text-pink-700" : ""
+          )}
+          onClick={() => setPlatform("instagram")}
+          aria-pressed={platform === "instagram"}
+        >
+          <span className="mr-2">📷</span>
+          Instagram
+        </button>
+      </div>
+      {/* Platform-specific hints */}
+      <div className="text-xs text-app-muted">
+        {platform === "instagram" 
+          ? "Instagram posts are always square (1:1 aspect ratio)"
+          : "Facebook supports multiple aspect ratios - select one below in Media section"
+        }
+      </div>
+    </div>
   );
 }
 
@@ -121,421 +160,488 @@ export default function LeftPanel(props) {
   }
 
   return (
-    <div className="panel overflow-hidden flex flex-col">
-      <div className="panel-header flex items-center gap-2">
+    <div className="panel overflow-hidden flex flex-col h-full">
+      {/* Fixed header */}
+      <div className="panel-header flex items-center gap-2 flex-shrink-0">
         <Settings2 className="w-4 h-4 text-app-body" />
         <span className="font-medium text-app-strong">Controls</span>
       </div>
 
-      {/* scrollable body */}
-      <div className="p-4 space-y-6 overflow-auto max-h-[calc(100vh-180px)] bg-app-surface">
-        {/* Brand */}
-        <Section title="Brand">
-          <div className="flex flex-wrap items-center gap-2">
-            <select
-              id="brand_select"
-              name="brand_select"
-              className="select min-w-0 w-0 flex-1 max-w-full"
-              value={safeBrandId || ""}
-              onChange={(e) => handlePickBrand(e.target.value || null)}
-            >
-              <option value="">No brand selected</option>
-              {brandRows.map((b) => (
-                <option key={b.id} value={b.id}>
-                  {(b.fb_name || "FB name")} · @{b.ig_username || "ig"}
-                  {b.verified ? " ✓" : ""}
-                </option>
-              ))}
-            </select>
+      {/* Single scrollable region */}
+      <div 
+        className="flex-1 overflow-auto bg-app-surface"
+        style={{ height: 'calc(100vh - 12rem)' }}
+      >
+        <div className="p-4 space-y-6">
+          {/* NEW: Platform Section - Added at the top */}
+          <Section title="Platform">
+            <PlatformSelector 
+              platform={post.platform || "facebook"} 
+              setPlatform={(p) => update({ platform: p })}
+              currentPost={post}
+            />
+          </Section>
 
-            <div className="flex items-center gap-2 shrink-0">
-              <button type="button" className="btn-outline" onClick={openBrandManager}>
+          {/* Divider */}
+          <div className="border-t border-app-border"></div>
+
+          {/* Brand Section - Simplified */}
+          <Section title="Brand">
+            <div className="flex items-center gap-2">
+              <select
+                id="brand_select"
+                name="brand_select"
+                className="select flex-1"
+                value={safeBrandId || ""}
+                onChange={(e) => handlePickBrand(e.target.value || null)}
+              >
+                <option value="">Select a brand</option>
+                {brandRows.map((b) => (
+                  <option key={b.id} value={b.id}>
+                    {(b.fb_name || "FB name")} · @{b.ig_username || "ig"}
+                    {b.verified ? " ✓" : ""}
+                  </option>
+                ))}
+              </select>
+              <button type="button" className="btn-outline flex-shrink-0" onClick={openBrandManager}>
                 Manage
               </button>
             </div>
-          </div>
 
-          <div className="flex items-center gap-3 mt-3">
-            <div className="relative">
-              <div className="w-14 h-14 rounded-full bg-app-muted overflow-hidden flex items-center justify-center">
-                {post.platform === "facebook" ? (
-                  selectedBrand?.fb_avatar_url ? (
+            {/* Simple brand preview */}
+            {selectedBrand && (
+              <div className="flex items-center gap-3 p-3 bg-slate-50 rounded-lg">
+                <div className="w-10 h-10 rounded-full bg-app-muted overflow-hidden flex items-center justify-center flex-shrink-0">
+                  {post.platform === "facebook" ? (
+                    selectedBrand?.fb_avatar_url ? (
+                      <img
+                        src={selectedBrand.fb_avatar_url}
+                        className="w-full h-full object-cover"
+                        alt=""
+                      />
+                    ) : (
+                      <ImageIcon className="w-5 h-5 text-app-muted" />
+                    )
+                  ) : selectedBrand?.ig_avatar_url ? (
                     <img
-                      src={selectedBrand.fb_avatar_url}
+                      src={selectedBrand.ig_avatar_url}
                       className="w-full h-full object-cover"
                       alt=""
                     />
                   ) : (
-                    <ImageIcon className="w-6 h-6 text-app-muted" />
-                  )
-                ) : selectedBrand?.ig_avatar_url ? (
-                  <img
-                    src={selectedBrand.ig_avatar_url}
-                    className="w-full h-full object-cover"
-                    alt=""
-                  />
+                    <ImageIcon className="w-5 h-5 text-app-muted" />
+                  )}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="font-medium text-sm truncate">
+                    {post.platform === "facebook" 
+                      ? (selectedBrand.fb_name || "Facebook Page")
+                      : `@${selectedBrand.ig_username || "instagram"}`
+                    }
+                    {selectedBrand.verified ? " ✓" : ""}
+                  </div>
+                  <div className="text-xs text-app-muted">
+                    {post.platform === "facebook" ? "Facebook" : "Instagram"} · {post.platform === "facebook" ? "Page" : "Account"}
+                  </div>
+                </div>
+              </div>
+            )}
+          </Section>
+
+          {/* Divider */}
+          <div className="border-t border-app-border"></div>
+
+          {/* Post copy Section */}
+          <Section title="Post copy">
+            <div>
+              <label htmlFor="post_caption" className="sr-only">
+                Post caption
+              </label>
+              <textarea
+                id="post_caption"
+                name="post_caption"
+                className="textarea"
+                rows={5}
+                value={post.caption || ""}
+                onChange={(e) => update({ caption: e.target.value })}
+                placeholder="Write your post copy here..."
+              />
+              <div className="text-xs text-app-muted text-right mt-1">
+                {(post.caption || "").length} chars
+              </div>
+            </div>
+          </Section>
+
+          {/* Divider */}
+          <div className="border-t border-app-border"></div>
+
+          {/* Media Section */}
+          <Section title="Media">
+            <div className="flex items-center justify-between flex-wrap gap-2">
+              <div className="flex items-center gap-2">
+                <Radio
+                  id="type_images"
+                  name="media_type"
+                  value="images"
+                  label="Images"
+                  checked={post.type !== "video"}
+                  onChange={() => {
+                    const n = post.media?.length || 0;
+                    const nextType = n > 1 ? "carousel" : "single";
+                    update({ type: nextType, videoSrc: "" });
+                  }}
+                />
+                <Radio
+                  id="type_video"
+                  name="media_type"
+                  value="video"
+                  label="Video"
+                  checked={post.type === "video"}
+                  onChange={() => update({ type: "video" })}
+                />
+              </div>
+
+              <div className="flex items-center gap-3 text-sm">
+                {post.platform === "instagram" ? (
+                  <div className="w-full">
+                    <label className="block text-xs text-app-muted mb-2">Instagram ad format</label>
+                    <select
+                      className="select w-full text-sm"
+                      value={post.igAdFormat || "feed-1:1"}
+                      onChange={(e) => {
+                        const [type, ratio] = e.target.value.split('-');
+                        update({ 
+                          igAdFormat: e.target.value,
+                          fbAspectRatio: ratio, // Still use fbAspectRatio for rendering consistency
+                          igAdType: type,
+                          isReel: type === "reels" // Auto-set reel flag for Reels ads
+                        });
+                      }}
+                    >
+                      <optgroup label="📸 Feed Ads">
+                        <option value="feed-1:1">Feed - Square (1:1) - 1080×1080</option>
+                        <option value="feed-4:5">Feed - Vertical (4:5) - 1080×1350</option>
+                        <option value="feed-16:9">Feed Video - Landscape (16:9) - up to 60s</option>
+                      </optgroup>
+                      <optgroup label="📱 Stories & Reels">
+                        <option value="story-9:16">Story Ads - Vertical (9:16) - 1080×1920</option>
+                        <option value="reels-9:16">Reels Ads - Vertical (9:16) - 1080×1920</option>
+                      </optgroup>
+                      <optgroup label="🔍 Discovery">
+                        <option value="explore-1:1">Explore - Square (1:1) - 1080×1080</option>
+                        <option value="explore-4:5">Explore - Vertical (4:5) - 1080×1350</option>
+                      </optgroup>
+                      <optgroup label="🛍️ Shopping">
+                        <option value="shop-1:1">Shop Ads - Square (1:1) - 1080×1080</option>
+                        <option value="carousel-1:1">Carousel - Square (1:1) - 1080×1080</option>
+                      </optgroup>
+                    </select>
+                    
+                    {/* Format-specific notes */}
+                    <div className="text-xs text-app-muted mt-2">
+                      {post.igAdFormat === "feed-1:1" && "Most flexible format, shows in main feed"}
+                      {post.igAdFormat === "feed-4:5" && "Vertical format, takes up more feed space"}
+                      {post.igAdFormat === "feed-16:9" && "Landscape video format, up to 60 seconds"}
+                      {post.igAdFormat === "story-9:16" && "Full-screen vertical, up to 15s per card, best for swipe-up CTAs"}
+                      {post.igAdFormat === "reels-9:16" && "Plays in Reels feed, feels native, up to 90 seconds"}
+                      {post.igAdFormat === "explore-1:1" && "Shows in Explore grid when users browse"}
+                      {post.igAdFormat === "explore-4:5" && "Vertical Explore format for more visual impact"}
+                      {post.igAdFormat === "shop-1:1" && "Product-focused, connects directly to Instagram Shop"}
+                      {post.igAdFormat === "carousel-1:1" && "Up to 10 cards, great for multiple products or features"}
+                      {!post.igAdFormat && "Select an Instagram ad format to see specific notes"}
+                    </div>
+                  </div>
                 ) : (
-                  <ImageIcon className="w-6 h-6 text-app-muted" />
+                  <div className="w-full">
+                    <label className="block text-xs text-app-muted mb-2">Facebook ad format</label>
+                    <select
+                      className="select w-full text-sm"
+                      value={post.fbAdFormat || "feed-1:1"}
+                      onChange={(e) => {
+                        const [type, ratio] = e.target.value.split('-');
+                        update({ 
+                          fbAdFormat: e.target.value,
+                          fbAspectRatio: ratio,
+                          fbAdType: type
+                        });
+                      }}
+                    >
+                      <optgroup label="📰 Feed Ads">
+                        <option value="feed-1:1">Feed - Square (1:1) - 1080×1080</option>
+                        <option value="feed-4:5">Feed - Vertical (4:5) - 1080×1350</option>
+                      </optgroup>
+                      <optgroup label="🎥 Video Ads">
+                        <option value="video-4:5">Video Feed - Vertical (4:5) - 1080×1350</option>
+                        <option value="video-16:9">Video Feed - Landscape (16:9) - 1280×720</option>
+                        <option value="instream-16:9">In-stream Video - Landscape (16:9) - 1280×720</option>
+                      </optgroup>
+                      <optgroup label="📱 Stories & Reels">
+                        <option value="story-9:16">Story Ads - Vertical (9:16) - 1080×1920</option>
+                        <option value="reels-9:16">Reels Ads - Vertical (9:16) - 1080×1920</option>
+                      </optgroup>
+                      <optgroup label="🛍️ Shopping">
+                        <option value="marketplace-1:1">Marketplace - Square (1:1) - 1080×1080</option>
+                        <option value="carousel-1:1">Carousel - Square (1:1) - 1080×1080</option>
+                        <option value="collection-1.91:1">Collection Cover - Landscape (1.91:1) - 1200×628</option>
+                      </optgroup>
+                      <optgroup label="💻 Desktop">
+                        <option value="rightcolumn-1:1">Right Column - Square (1:1) - 1200×1200</option>
+                      </optgroup>
+                    </select>
+                    
+                    {/* Format-specific notes */}
+                    <div className="text-xs text-app-muted mt-2">
+                      {post.fbAdFormat === "feed-1:1" && "High visibility feed placement with CTA buttons"}
+                      {post.fbAdFormat === "feed-4:5" && "Vertical feed format, great for product ads"}
+                      {post.fbAdFormat === "video-4:5" && "Auto-plays muted, short videos perform better"}
+                      {post.fbAdFormat === "video-16:9" && "Landscape video format for feed placement"}
+                      {post.fbAdFormat === "instream-16:9" && "Plays inside longer videos, skippable after 5s"}
+                      {post.fbAdFormat === "story-9:16" && "Full-screen vertical, same as Instagram Stories"}
+                      {post.fbAdFormat === "reels-9:16" && "Auto-plays in Reels feed, up to 90 seconds"}
+                      {post.fbAdFormat === "marketplace-1:1" && "Targets users actively shopping"}
+                      {post.fbAdFormat === "carousel-1:1" && "Up to 10 cards, great for product showcases"}
+                      {post.fbAdFormat === "collection-1.91:1" && "Opens Instant Experience, optimized for shopping"}
+                      {post.fbAdFormat === "rightcolumn-1:1" && "Desktop only, lower CTR but cheap impressions"}
+                      {!post.fbAdFormat && "Select a Facebook ad format to see specific notes"}
+                    </div>
+                  </div>
                 )}
               </div>
             </div>
 
-            {/* Per-post overrides */}
-            <div className="flex-1 grid grid-cols-1 gap-2 min-w-0">
-              <label className="text-xs text-app-muted" htmlFor="brand_name">
-                Facebook page name
-              </label>
+            {/* Upload zone */}
+            <div
+              onDragOver={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+              }}
+              onDrop={onDrop}
+              className="border-2 border-dashed border-app-border rounded-lg p-6 text-center bg-slate-50/50 hover:bg-slate-50 transition-colors"
+            >
+              <p className="text-sm text-app-body mb-3">Drag files here, or</p>
+              <div className="flex items-center justify-center gap-2 flex-wrap">
+                <button className="btn" onClick={() => fileImgRef.current?.click()}>
+                  <ImageIcon className="w-4 h-4 mr-2" />
+                  Add images
+                </button>
+                <button className="btn-outline" onClick={() => fileVidRef.current?.click()}>
+                  <VideoIcon className="w-4 h-4 mr-2" />
+                  Add video
+                </button>
+              </div>
+
               <input
-                id="brand_name"
-                name="brand_name"
-                className="input"
-                value={(post.brand && post.brand.name) || ""}
-                onChange={(e) =>
-                  update({ brand: { ...(post.brand || {}), name: e.target.value } })
-                }
-                placeholder="e.g. Patagonia"
+                id="image_files"
+                name="image_files"
+                ref={fileImgRef}
+                type="file"
+                accept="image/*"
+                multiple
+                className="sr-only"
+                onChange={async (e) => {
+                  if (e.target.files) await handleImageFiles(e.target.files);
+                }}
               />
-
-              <div className="grid grid-cols-2 gap-2 items-center">
-                <div className="col-span-1 min-w-0">
-                  <label className="text-xs text-app-muted" htmlFor="brand_username">
-                    Instagram username
-                  </label>
-                  <input
-                    id="brand_username"
-                    name="brand_username"
-                    className="input"
-                    value={(post.brand && post.brand.username) || ""}
-                    onChange={(e) =>
-                      update({
-                        brand: {
-                          ...(post.brand || {}),
-                          username: e.target.value.replace(/^@/, ""),
-                        },
-                      })
-                    }
-                    placeholder="e.g. patagonia"
-                  />
-                </div>
-                <div className="flex items-center gap-2 text-sm col-span-1 mt-5">
-                  <input
-                    id="brand_verified_override"
-                    name="brand_verified_override"
-                    type="checkbox"
-                    checked={!!(post.brand && post.brand.verified)}
-                    onChange={(e) =>
-                      update({ brand: { ...(post.brand || {}), verified: e.target.checked } })
-                    }
-                  />
-                  <label htmlFor="brand_verified_override">Verified badge</label>
-                </div>
-              </div>
-            </div>
-          </div>
-        </Section>
-
-        {/* Post copy */}
-        <Section title="Post copy">
-          <label htmlFor="post_caption" className="sr-only">
-            Post caption
-          </label>
-          <textarea
-            id="post_caption"
-            name="post_caption"
-            className="textarea"
-            rows={5}
-            value={post.caption || ""}
-            onChange={(e) => update({ caption: e.target.value })}
-            placeholder="Write your post copy here..."
-          />
-          <div className="text-xs text-app-muted text-right">
-            {(post.caption || "").length} chars
-          </div>
-        </Section>
-
-        {/* Media */}
-        <Section title="Media">
-          <div className="flex items-center gap-2 pb-2 flex-wrap">
-            {/* Images */}
-            <Radio
-              id="type_images"
-              name="media_type"
-              value="images"
-              label="Images"
-              checked={post.type !== "video"}
-              onChange={() => {
-                const n = post.media?.length || 0;
-                const nextType = n > 1 ? "carousel" : "single";
-                update({ type: nextType, videoSrc: "" });
-              }}
-            />
-            {/* Video */}
-            <Radio
-              id="type_video"
-              name="media_type"
-              value="video"
-              label="Video"
-              checked={post.type === "video"}
-              onChange={() => update({ type: "video" })}
-            />
-
-            {post.platform === "instagram" ? (
-              <div className="flex items-center gap-2 ml-auto text-sm">
-                <input
-                  id="is_reel"
-                  name="is_reel"
-                  type="checkbox"
-                  checked={!!post.isReel}
-                  onChange={(e) => update({ isReel: e.target.checked })}
-                />
-                <label htmlFor="is_reel">Reel</label>
-              </div>
-            ) : (
-              <div className="flex items-center gap-3 ml-auto">
-                <div className="flex items-center gap-2 text-sm">
-                  <input
-                    id="fb_square"
-                    name="fb_square"
-                    type="checkbox"
-                    checked={!!post.fbSquare}
-                    onChange={(e) => update({ fbSquare: e.target.checked })}
-                  />
-                  <label htmlFor="fb_square">Square 1:1 (Facebook)</label>
-                </div>
-                <span className="text-xs text-app-muted">Landscape uses 16:9</span>
-              </div>
-            )}
-          </div>
-
-          <div
-            onDragOver={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-            }}
-            onDrop={onDrop}
-            className="border-2 border-dashed rounded-xl p-4 text-center bg-app-muted border-app"
-          >
-            <p className="text-sm mb-2">Drag files here, or</p>
-            <div className="flex items-center justify-center gap-2 flex-wrap">
-              <button className="btn" onClick={() => fileImgRef.current?.click()}>
-                <ImageIcon className="w-4 h-4 mr-1" />
-                Add images
-              </button>
-              <button className="btn-outline" onClick={() => fileVidRef.current?.click()}>
-                <VideoIcon className="w-4 h-4 mr-1" />
-                Add video
-              </button>
-            </div>
-
-            <input
-              id="image_files"
-              name="image_files"
-              ref={fileImgRef}
-              type="file"
-              accept="image/*"
-              multiple
-              className="hidden"
-              onChange={async (e) => {
-                if (e.target.files) await handleImageFiles(e.target.files);
-              }}
-            />
-            <input
-              id="video_file"
-              name="video_file"
-              ref={fileVidRef}
-              type="file"
-              accept="video/mp4,video/webm,video/quicktime"
-              className="hidden"
-              onChange={async (e) => {
-                const f = e.target.files?.[0];
-                if (f) await handleVideoFile(f);
-              }}
-            />
-          </div>
-
-          {post.type !== "video" && post.media?.length ? (
-            <div className="grid grid-cols-5 gap-2 pt-3">
-              {post.media.map((m, i) => (
-                <div
-                  key={i}
-                  className={cx(
-                    "relative rounded-lg overflow-hidden border-app border cursor-pointer",
-                    i === post.activeIndex ? "ring-2 ring-brand-500" : ""
-                  )}
-                  onClick={() => update({ activeIndex: i })}
-                >
-                  <img src={m} className="w-full h-20 object-cover block" alt="" />
-                  <button
-                    className="absolute top-1 right-1 bg-white/90 rounded-full p-1 shadow"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      removeImageAt(i);
-                    }}
-                    title="Remove"
-                  >
-                    <Trash2 className="w-3 h-3" />
-                  </button>
-                </div>
-              ))}
-            </div>
-          ) : null}
-
-          {post.type === "video" && post.videoSrc ? (
-            <div className="flex items-center justify-between pt-2">
-              <div className="text-xs text-app-muted truncate">Video loaded</div>
-              <button className="chip" onClick={clearVideo}>
-                <Trash2 className="w-3 h-3 mr-1" />
-                Remove video
-              </button>
-            </div>
-          ) : null}
-
-          {/* Per-image headline editor */}
-          {post.type !== "video" && (post.media?.length || 0) > 0 ? (
-            <div className="pt-3">
-              <label htmlFor="image_headline" className="text-xs text-app-muted">
-                Headline for image {post.activeIndex + 1}
-              </label>
               <input
-                id="image_headline"
-                name="image_headline"
-                className="input mt-1"
-                placeholder="Enter headline for this image"
-                value={post.mediaMeta?.[post.activeIndex]?.headline || ""}
-                onChange={(e) => {
-                  const next = (post.mediaMeta || []).slice();
-                  const idx = post.activeIndex || 0;
-                  next[idx] = { ...(next[idx] || {}), headline: e.target.value };
-                  update({ mediaMeta: next });
+                id="video_file"
+                name="video_file"
+                ref={fileVidRef}
+                type="file"
+                accept="video/mp4,video/webm,video/quicktime"
+                className="sr-only"
+                onChange={async (e) => {
+                  const f = e.target.files?.[0];
+                  if (f) await handleVideoFile(f);
                 }}
               />
             </div>
-          ) : null}
-        </Section>
 
-        {/* Link preview (Facebook style) */}
-        <Section title="Link preview (Facebook style)">
-          <label htmlFor="link_headline" className="sr-only">
-            Headline
-          </label>
-          <input
-            id="link_headline"
-            name="link_headline"
-            className="input"
-            placeholder="Headline"
-            value={post.link?.headline || ""}
-            onChange={(e) => update({ link: { ...(post.link || {}), headline: e.target.value } })}
-          />
-          <label htmlFor="link_subhead" className="sr-only">
-            Subhead
-          </label>
-          <input
-            id="link_subhead"
-            name="link_subhead"
-            className="input"
-            placeholder="Subhead"
-            value={post.link?.subhead || ""}
-            onChange={(e) => update({ link: { ...(post.link || {}), subhead: e.target.value } })}
-          />
-          <div className="flex items-center gap-2">
-            <label htmlFor="link_url" className="sr-only">
-              Link URL
-            </label>
-            <input
-              id="link_url"
-              name="link_url"
-              className="input flex-1"
-              placeholder="Link URL"
-              value={post.link?.url || ""}
-              onChange={(e) => update({ link: { ...(post.link || {}), url: e.target.value } })}
-              autoComplete="url"
-            />
-            <label htmlFor="link_cta" className="sr-only">
-              CTA
-            </label>
-            <select
-              id="link_cta"
-              name="link_cta"
-              className="select"
-              value={post.link?.cta || "Learn More"}
-              onChange={(e) => update({ link: { ...(post.link || {}), cta: e.target.value } })}
-            >
-              {["Learn More", "Shop Now", "Sign Up", "Download", "Book Now", "Contact Us"].map(
-                (c) => (
-                  <option key={c} value={c}>
-                    {c}
-                  </option>
-                )
-              )}
-            </select>
-          </div>
-        </Section>
+            {/* Image thumbnails */}
+            {post.type !== "video" && post.media?.length ? (
+              <div className="grid grid-cols-5 gap-2">
+                {post.media.map((m, i) => (
+                  <div
+                    key={i}
+                    className={cx(
+                      "relative rounded-lg overflow-hidden border cursor-pointer transition-all",
+                      i === post.activeIndex 
+                        ? "ring-2 ring-brand-500 border-brand-500" 
+                        : "border-app-border hover:border-brand-300"
+                    )}
+                    onClick={() => update({ activeIndex: i })}
+                  >
+                    <img src={m} className="w-full h-16 object-cover block" alt="" />
+                    <button
+                      className="absolute top-1 right-1 bg-white/90 hover:bg-white rounded-full p-1 shadow-sm transition-colors"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        removeImageAt(i);
+                      }}
+                      title="Remove"
+                    >
+                      <Trash2 className="w-3 h-3" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            ) : null}
 
-        {/* Deck actions */}
-        <Section title="Deck (multiple posts)">
-          <div className="flex items-center gap-2">
-            <button className="btn" onClick={() => openDeckPicker?.()}>
-              <ImageIcon className="w-4 h-4 mr-1" />
-              Add this post to deck
-            </button>
-            <button
-              className="btn-outline"
-              title="Quick save with title prompt"
-              onClick={() => saveToDeck?.()}
-            >
-              Quick save
-            </button>
-            {deck.length ? (
+            {/* Video indicator */}
+            {post.type === "video" && post.videoSrc ? (
+              <div className="flex items-center justify-between p-3 bg-white rounded-lg border border-app-border">
+                <div className="text-sm text-app-body">Video loaded</div>
+                <button className="chip hover:bg-red-50 hover:text-red-600 transition-colors" onClick={clearVideo}>
+                  <Trash2 className="w-3 h-3 mr-1" />
+                  Remove video
+                </button>
+              </div>
+            ) : null}
+
+            {/* Per-image headline editor */}
+            {post.type !== "video" && (post.media?.length || 0) > 0 ? (
+              <div>
+                <label htmlFor="image_headline" className="block text-xs text-app-muted mb-2">
+                  Headline for image {post.activeIndex + 1}
+                </label>
+                <input
+                  id="image_headline"
+                  name="image_headline"
+                  className="input"
+                  placeholder="Enter headline for this image"
+                  value={post.mediaMeta?.[post.activeIndex]?.headline || ""}
+                  onChange={(e) => {
+                    const next = (post.mediaMeta || []).slice();
+                    const idx = post.activeIndex || 0;
+                    next[idx] = { ...(next[idx] || {}), headline: e.target.value };
+                    update({ mediaMeta: next });
+                  }}
+                />
+              </div>
+            ) : null}
+          </Section>
+
+          {/* Divider */}
+          <div className="border-t border-app-border"></div>
+
+          {/* Link preview Section - UPDATED: Only show for Facebook */}
+          {post.platform === "facebook" && (
+            <Section title="Link preview (Facebook style)">
+              <div className="space-y-3">
+                <input
+                  id="link_headline"
+                  name="link_headline"
+                  className="input"
+                  placeholder="Headline"
+                  value={post.link?.headline || ""}
+                  onChange={(e) => update({ link: { ...(post.link || {}), headline: e.target.value } })}
+                />
+                <input
+                  id="link_subhead"
+                  name="link_subhead"
+                  className="input"
+                  placeholder="Subhead"
+                  value={post.link?.subhead || ""}
+                  onChange={(e) => update({ link: { ...(post.link || {}), subhead: e.target.value } })}
+                />
+                <div className="flex items-center gap-2">
+                  <input
+                    id="link_url"
+                    name="link_url"
+                    className="input flex-1"
+                    placeholder="Link URL"
+                    value={post.link?.url || ""}
+                    onChange={(e) => update({ link: { ...(post.link || {}), url: e.target.value } })}
+                    autoComplete="url"
+                  />
+                  <select
+                    id="link_cta"
+                    name="link_cta"
+                    className="select w-auto"
+                    value={post.link?.cta || "Learn More"}
+                    onChange={(e) => update({ link: { ...(post.link || {}), cta: e.target.value } })}
+                  >
+                    {["Learn More", "Shop Now", "Sign Up", "Download", "Book Now", "Contact Us"].map(
+                      (c) => (
+                        <option key={c} value={c}>
+                          {c}
+                        </option>
+                      )
+                    )}
+                  </select>
+                </div>
+              </div>
+            </Section>
+          )}
+
+          {/* Divider - only show if link section was shown */}
+          {post.platform === "facebook" && <div className="border-t border-app-border"></div>}
+
+          {/* Deck Section */}
+          <Section title="Deck (multiple posts)">
+            <div className="flex items-center gap-2 flex-wrap">
+              <button className="btn" onClick={() => openDeckPicker?.()}>
+                <ImageIcon className="w-4 h-4 mr-2" />
+                Add this post to deck
+              </button>
               <button
                 className="btn-outline"
-                onClick={() => startPresentingDeck(deck[0]?.id)}
-                disabled={!deck.length}
+                title="Quick save with title prompt"
+                onClick={() => saveToDeck?.()}
               >
-                <Film className="w-4 h-4 mr-1" />
-                Present deck
+                Quick save
               </button>
-            ) : null}
-          </div>
-
-          {deck.length ? (
-            <div className="space-y-2 max-h-56 overflow-auto pr-1 pt-2">
-              {deck.map((d) => (
-                <div
-                  key={d.id}
-                  className="flex items-center justify-between border border-app rounded-lg p-2 hover:bg-app-muted"
+              {deck.length > 0 && (
+                <button
+                  className="btn-outline"
+                  onClick={() => startPresentingDeck(deck[0]?.id)}
+                  disabled={!deck.length}
                 >
-                  <div className="text-sm">
-                    <div className="font-medium text-app-strong">
-                      {new Date(d.createdAt).toLocaleString()}
-                    </div>
-                    <div className="text-xs text-app-muted">
-                      {(d.post?.brand?.name || "Brand")} · {d.post?.platform || "facebook"} ·{" "}
-                      {d.post?.type || "single"}
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <button className="chip" onClick={() => loadFromDeck(d.id)}>
-                      <Eye className="w-3 h-3 mr-1" />
-                      Load
-                    </button>
-                    <button className="chip" onClick={() => duplicateToDeck(d.id)}>
-                      <Copy className="w-3 h-3 mr-1" />
-                      Duplicate
-                    </button>
-                    <button className="chip" onClick={() => startPresentingDeck(d.id)}>
-                      <Film className="w-3 h-3 mr-1" />
-                      Start here
-                    </button>
-                    <button className="chip" onClick={() => deleteFromDeck(d.id)}>
-                      <Trash2 className="w-3 h-3 mr-1" />
-                      Remove
-                    </button>
-                  </div>
-                </div>
-              ))}
+                  <Film className="w-4 h-4 mr-2" />
+                  Present deck
+                </button>
+              )}
             </div>
-          ) : null}
-        </Section>
+
+            {deck.length > 0 && (
+              <div className="space-y-2 max-h-56 overflow-auto pr-1">
+                {deck.map((d) => (
+                  <div
+                    key={d.id}
+                    className="flex items-center justify-between border border-app-border rounded-lg p-3 hover:bg-slate-50 transition-colors"
+                  >
+                    <div className="text-sm min-w-0">
+                      <div className="font-medium text-app-strong truncate">
+                        {new Date(d.createdAt).toLocaleString()}
+                      </div>
+                      <div className="text-xs text-app-muted truncate">
+                        {(d.post?.brand?.name || "Brand")} · {d.post?.platform || "facebook"} ·{" "}
+                        {d.post?.type || "single"}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-1 flex-shrink-0">
+                      <button className="chip text-xs" onClick={() => loadFromDeck(d.id)}>
+                        <Eye className="w-3 h-3 mr-1" />
+                        Load
+                      </button>
+                      <button className="chip text-xs" onClick={() => duplicateToDeck(d.id)}>
+                        <Copy className="w-3 h-3 mr-1" />
+                        Duplicate
+                      </button>
+                      <button className="chip text-xs" onClick={() => startPresentingDeck(d.id)}>
+                        <Film className="w-3 h-3 mr-1" />
+                        Start here
+                      </button>
+                      <button className="chip text-xs hover:bg-red-50 hover:text-red-600 transition-colors" onClick={() => deleteFromDeck(d.id)}>
+                        <Trash2 className="w-3 h-3 mr-1" />
+                        Remove
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </Section>
+        </div>
       </div>
     </div>
   );

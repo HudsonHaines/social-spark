@@ -1,13 +1,9 @@
 // src/components/TopBar.jsx
 import React from "react";
-import { Image as ImageIcon, FolderOpen, PlusSquare, User, Menu } from "lucide-react";
+import { Image as ImageIcon, FolderOpen, PlusSquare, Menu } from "lucide-react";
 import ProfileButton from "../profile/ProfileButton";
 
-const cx = (...a) => a.filter(Boolean).join(" ");
-
 export default function TopBar({
-  platform = "facebook",
-  setPlatform = () => {},
   mode = "create",
   setMode = () => {},
   onExportPNG = () => {},
@@ -15,49 +11,57 @@ export default function TopBar({
   openDeckManager = null,
   openDeckPicker = null,
   user = null,
+  // Add these props to handle present mode properly
+  canPresent = false,
+  onStartPresent = () => {},
+  exportDisabled = false,
 }) {
-  const Btn = ({ active, children, onClick }) => (
-    <button
-      className={cx(
-        "px-3 py-1.5 rounded-md border text-sm",
-        active ? "bg-app-strong text-white border-app" : "bg-white hover:bg-slate-50"
-      )}
-      onClick={onClick}
-    >
-      {children}
-    </button>
-  );
+  const handlePresentClick = () => {
+    if (mode === "present") {
+      // Exit present mode
+      setMode("create");
+    } else {
+      // Enter present mode - but only if we have posts to present
+      if (canPresent) {
+        onStartPresent();
+      } else {
+        alert("No posts to present. Add posts to your deck or open a saved deck first.");
+      }
+    }
+  };
 
   return (
-    <header className="border-b bg-white">
-      <div className="container-tight h-14 flex items-center gap-3">
-        {/* Left cluster */}
-         <button
-            className="p-2 rounded hover:bg-slate-100"
-            onClick={onOpenMenu}
-            aria-label="Menu"
-            aria-expanded="true"
-            aria-controls="app-menu-drawer"
-          >
-          <Menu className="w-5 h-5" />
+    <header className="border-b bg-white h-12">
+      <div className="container-tight h-full flex items-center gap-3">
+        {/* Menu button */}
+        <button
+          className="p-2 rounded hover:bg-slate-100 -ml-2"
+          onClick={onOpenMenu}
+          aria-label="Menu"
+          aria-expanded="false"
+          aria-controls="app-menu-drawer"
+        >
+          <Menu className="w-4 h-4" />
         </button>
 
-        <div className="flex items-center gap-2">
-          <Btn active={platform === "facebook"} onClick={() => setPlatform("facebook")}>
-            Facebook
-          </Btn>
-          <Btn active={platform === "instagram"} onClick={() => setPlatform("instagram")}>
-            Instagram
-          </Btn>
-        </div>
-
-        <div className="flex items-center gap-2 ml-4">
-          <Btn active={mode === "create"} onClick={() => setMode("create")}>
+        {/* Mode tabs */}
+        <div className="tabs">
+          <button
+            className="tab"
+            aria-selected={mode === "create"}
+            onClick={() => setMode("create")}
+          >
             Create
-          </Btn>
-          <Btn active={mode === "present"} onClick={() => setMode("present")}>
+          </button>
+          <button
+            className="tab"
+            aria-selected={mode === "present"}
+            onClick={handlePresentClick}
+            title={mode === "present" ? "Exit present mode" : 
+                   canPresent ? "Start presenting" : "No posts to present"}
+          >
             Present
-          </Btn>
+          </button>
         </div>
 
         {/* Spacer */}
@@ -74,23 +78,30 @@ export default function TopBar({
             Decks
           </button>
 
-          <button
-            className="btn-outline hidden sm:inline-flex"
-            onClick={openDeckPicker || (() => {})}
-            title="Save current post to a deck"
-          >
-            <PlusSquare className="w-4 h-4 mr-1" />
-            Save to deck
-          </button>
+          {/* Only show Save to deck button in create mode */}
+          {mode === "create" && (
+            <button
+              className="btn-outline hidden sm:inline-flex"
+              onClick={openDeckPicker || (() => {})}
+              title="Save current post to a deck"
+            >
+              <PlusSquare className="w-4 h-4 mr-1" />
+              Save to deck
+            </button>
+          )}
 
-          <button className="btn-outline" onClick={onExportPNG} title="Export PNG">
+          <button 
+            className="btn-outline" 
+            onClick={onExportPNG} 
+            title={exportDisabled ? "Waiting for images to load..." : "Export PNG"}
+            disabled={exportDisabled}
+          >
             <ImageIcon className="w-4 h-4 mr-1" />
             Export
           </button>
 
           <div className="h-6 w-px bg-slate-200 mx-1" />
 
-          {/* Use your existing ProfileButton for sign in/out */}
           <ProfileButton />
         </div>
       </div>

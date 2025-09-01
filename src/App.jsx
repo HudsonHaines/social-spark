@@ -14,9 +14,10 @@ import MenuDrawer from "./components/MenuDrawer";
 import DeckPickerV3 from "./decks/DeckPickerV3";
 import DecksPage from "./decks/DecksPage";
 import BrandsPage from "./brands/BrandsPage";
+import EditorPresentMode from "./components/EditorPresentMode";
 
 import { emptyPost, ensurePostShape } from "./data/postShape";
-import * as htmlToImage from "html-to-image";
+import { useExportStability } from "./hooks/useExportStability"; // FIXED: Use the hook
 import {
   listDecks,
   createDeck,
@@ -34,16 +35,26 @@ export default function App() {
   const [mode, setMode] = useState("create"); // create | present
   const [page, setPage] = useState("editor"); // editor | decks | brands
 
+  // presenter state
+  const [presentPosts, setPresentPosts] = useState([]);
+
   // ui state
   const [menuOpen, setMenuOpen] = useState(false);
   const [brandMgr, setBrandMgr] = useState(false);
-  const [deckMgr, setDeckMgr] = useState(false); // safe to keep
-  const [savingImg, setSavingImg] = useState(false);
+  const [deckMgr, setDeckMgr] = useState(false);
   const [deckPickerOpen, setDeckPickerOpen] = useState(false);
 
   // refs
   const previewRef = useRef(null);
   const videoRef = useRef(null);
+
+  // FIXED: Use the export stability hook
+  const { isExporting, imagesReady, exportAsPng, attachNode } = useExportStability();
+
+  // Attach the preview ref to the export hook
+  useEffect(() => {
+    attachNode(previewRef.current);
+  }, [attachNode]);
 
   // auth
   const [userId, setUserId] = useState(null);
@@ -198,11 +209,12 @@ export default function App() {
     setDeck((d) => d.filter((x) => x.id !== id));
   }, []);
 
-  // present from Decks page
+  // present from Decks page (Supabase deck)
   const presentFromDecksPage = useCallback(async (deckId) => {
     try {
       const rows = await listDeckItems(deckId);
       const posts = rows.map((r) => r.post_json);
+      setPresentPosts(posts);
       setPage("editor");
       setMode("present");
       if (posts.length) setPost(ensurePostShape(posts[0]));
@@ -210,6 +222,24 @@ export default function App() {
       console.error(e);
       alert("Could not open deck.");
     }
+  }, []);
+
+  // start presenting from local scratch deck
+  const startPresentingLocalDeck = useCallback(() => {
+    if (deck.length === 0) {
+      alert("Add some posts to your deck first to start presenting.");
+      return;
+    }
+    const posts = deck.map((d) => d.post);
+    setPresentPosts(posts);
+    setMode("present");
+    if (posts.length) setPost(ensurePostShape(posts[0]));
+  }, [deck]);
+
+  // exit present mode
+  const exitPresentMode = useCallback(() => {
+    setMode("create");
+    setPresentPosts([]);
   }, []);
 
   // save current post to Supabase deck
@@ -285,49 +315,51 @@ export default function App() {
     [post]
   );
 
-  // export as PNG
-  const saveAsPng = useCallback(async () => {
-    if (!previewRef.current) return;
-    setSavingImg(true);
+  // FIXED: Use the stable export function
+  const handleExportPNG = useCallback(async () => {
     try {
-      const node = previewRef.current;
-      const dataUrl = await htmlToImage.toPng(node, {
-        pixelRatio: 2,
-        cacheBust: true,
-        quality: 1,
-      });
-      const a = document.createElement("a");
-      a.href = dataUrl;
-      a.download = `mockup-${Date.now()}.png`;
-      a.click();
+      await exportAsPng(previewRef);
     } catch (err) {
-      console.error("PNG export failed", err);
-      alert("PNG export failed. Check console.");
-    } finally {
-      setSavingImg(false);
+      alert("PNG export failed. Check console for details.");
     }
-  }, []);
+  }, [exportAsPng]);
+
+  // FIXED: Determine if we can present (have posts available)
+  const canPresent = useMemo(() => {
+    return deck.length > 0; // Can present local deck
+  }, [deck.length]);
+
+  // FIXED: Handle present mode toggle properly
+  const handlePresentModeToggle = useCallback(() => {
+    if (mode === "present") {
+      exitPresentMode();
+    } else {
+      startPresentingLocalDeck();
+    }
+  }, [mode, exitPresentMode, startPresentingLocalDeck]);
 
   return (
     <Fragment>
       <AppShell
         singleColumn={page === "decks" || page === "brands"}
         topBarProps={{
-          platform: safePost.platform,
-          setPlatform: (p) => update({ platform: p }),
           mode,
-          setMode,
-          onExportPNG: saveAsPng,
+          setMode, // Keep this for direct mode setting
+          onExportPNG: handleExportPNG, // FIXED: Use stable export
           user,
           onOpenMenu: () => setMenuOpen(true),
           openDeckManager: () => setPage("decks"),
           openDeckPicker,
+          // FIXED: Add these props for better present mode handling
+          canPresent,
+          onStartPresent: handlePresentModeToggle,
+          exportDisabled: !imagesReady || isExporting, // FIXED: Disable while images loading
         }}
         leftPanel={
           page === "decks" ? (
             <DecksPage
               userId={userId}
-              currentPost={safePost}
+              currentPost={null}
               onBack={() => setPage("editor")}
               onPresent={presentFromDecksPage}
             />
@@ -352,7 +384,7 @@ export default function App() {
               deck={deck}
               loadFromDeck={loadFromDeck}
               deleteFromDeck={deleteFromDeck}
-              startPresentingDeck={() => setMode("present")}
+              startPresentingDeck={startPresentingLocalDeck}
               loadingDeck={false}
               openBrandManager={() => setBrandMgr(true)}
               saveToDeck={saveToDeck}
@@ -361,17 +393,29 @@ export default function App() {
           )
         }
         rightPreview={
-          page !== "editor" ? null : (
-            <RightPreview
-              ref={previewRef}
-              post={safePost}
-              setPost={setPost}
-              mode={mode}
-              saveAsPng={saveAsPng}
-              savingImg={savingImg}
-              videoRef={videoRef}
-            />
-          )
+          page !== "editor"
+            ? null
+            : mode === "present"
+            ? (
+              <EditorPresentMode
+                posts={presentPosts}
+                initialIndex={0}
+                onClose={exitPresentMode}
+                showPlatformTags={true}
+              />
+            )
+            : (
+              <RightPreview
+                ref={previewRef}
+                post={safePost}
+                setPost={setPost}
+                mode={mode}
+                saveAsPng={handleExportPNG} // FIXED: Use stable export
+                savingImg={isExporting} // FIXED: Use hook state
+                videoRef={videoRef}
+                showExport={true}
+              />
+            )
         }
         modals={{
           brandManagerOpen: brandMgr,
@@ -382,6 +426,7 @@ export default function App() {
             setDeckMgr(false);
             setMode("present");
             if (payload?.posts?.length) {
+              setPresentPosts(payload.posts);
               setPost(ensurePostShape(payload.posts[0]));
             }
           },

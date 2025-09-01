@@ -40,28 +40,28 @@ const RightPreview = forwardRef(function RightPreview(
 
   const aspectClass = getAspectClass(aspectRatio);
 
-  // Enhanced dynamic sizing - maximized for top alignment
+  // Enhanced dynamic sizing based on aspect ratio and viewport
   const getDynamicSizing = () => {
     const isPortrait = aspectRatio === "9:16" || aspectRatio === "4:5";
     const isLandscape = aspectRatio === "16:9" || aspectRatio === "1.91:1";
 
     if (mode === "present") {
-      // Present mode: maximize size
-      if (isPortrait) {
-        return { maxWidth: "min(500px, 90vw)", maxHeight: "90vh" };
-      } else if (isLandscape) {
-        return { maxWidth: "min(800px, 95vw)", maxHeight: "75vh" };
-      } else {
-        return { maxWidth: "min(600px, 90vw)", maxHeight: "90vh" };
-      }
-    } else {
-      // Create mode: still maximize but leave room for controls
+      // Present mode: be more generous with sizing
       if (isPortrait) {
         return { maxWidth: "min(400px, 85vw)", maxHeight: "85vh" };
       } else if (isLandscape) {
-        return { maxWidth: "min(700px, 90vw)", maxHeight: "70vh" };
+        return { maxWidth: "min(720px, 90vw)", maxHeight: "70vh" };
       } else {
         return { maxWidth: "min(500px, 85vw)", maxHeight: "85vh" };
+      }
+    } else {
+      // Create mode: more conservative sizing
+      if (isPortrait) {
+        return { maxWidth: "min(320px, 75vw)", maxHeight: "75vh" };
+      } else if (isLandscape) {
+        return { maxWidth: "min(560px, 85vw)", maxHeight: "60vh" };
+      } else {
+        return { maxWidth: "min(400px, 80vw)", maxHeight: "75vh" };
       }
     }
   };
@@ -163,165 +163,167 @@ const RightPreview = forwardRef(function RightPreview(
         </div>
       ) : null}
 
-      {/* main preview container - top aligned and maximized */}
-      <div className="flex-1 flex justify-center overflow-hidden">
-        <div 
-          className="flex-shrink-0" 
-          style={wrapperStyle}
-        >
-          <div ref={previewRef} className="card p-0 overflow-hidden w-full">
-            {/* header */}
-            <div className="flex items-center gap-3 p-3">
-              <div className="w-10 h-10 rounded-full bg-slate-200 overflow-hidden shrink-0">
-                {p.brand?.profileSrc ? (
-                  <img
-                    src={p.brand.profileSrc}
-                    alt=""
-                    className="w-full h-full object-cover"
-                    draggable={false}
-                  />
-                ) : null}
-              </div>
-              <div className="min-w-0">
-                <div className="brand-name font-medium truncate">
-                  {p.brand?.name || p.brand?.username || "Brand"}
-                  {p.brand?.verified ? (
-                    <span className="ml-1 align-middle text-sky-500">✓</span>
+      {/* main preview container with centering and overflow handling */}
+      <div className="flex-1 flex items-center justify-center overflow-hidden p-2">
+        <div className="w-full h-full flex items-center justify-center">
+          <div 
+            className="mx-auto flex-shrink-0" 
+            style={wrapperStyle}
+          >
+            <div ref={previewRef} className="card p-0 overflow-hidden w-full">
+              {/* header */}
+              <div className="flex items-center gap-3 p-3">
+                <div className="w-10 h-10 rounded-full bg-slate-200 overflow-hidden shrink-0">
+                  {p.brand?.profileSrc ? (
+                    <img
+                      src={p.brand.profileSrc}
+                      alt=""
+                      className="w-full h-full object-cover"
+                      draggable={false}
+                    />
                   ) : null}
                 </div>
-                <div className="meta text-xs text-slate-500 truncate">
-                  {p.platform === "instagram"
-                    ? `@${p.brand?.username || "username"}`
-                    : "Facebook · Now"}
+                <div className="min-w-0">
+                  <div className="brand-name font-medium truncate">
+                    {p.brand?.name || p.brand?.username || "Brand"}
+                    {p.brand?.verified ? (
+                      <span className="ml-1 align-middle text-sky-500">✓</span>
+                    ) : null}
+                  </div>
+                  <div className="meta text-xs text-slate-500 truncate">
+                    {p.platform === "instagram"
+                      ? `@${p.brand?.username || "username"}`
+                      : "Facebook · Now"}
+                  </div>
                 </div>
               </div>
-            </div>
 
-            {/* caption */}
-            {p.caption ? (
-              <div className="px-3 pb-3">
-                <div className="whitespace-pre-wrap text-sm">{p.caption}</div>
-              </div>
-            ) : null}
+              {/* caption */}
+              {p.caption ? (
+                <div className="px-3 pb-3">
+                  <div className="whitespace-pre-wrap text-sm">{p.caption}</div>
+                </div>
+              ) : null}
 
-            {/* media area */}
-            <div className="w-full">
-              <div
-                className={cx(
-                  "relative border-t border-b bg-black/5",
-                  aspectClass
-                )}
-              >
-                {/* content */}
-                {p.type === "video" && p.videoSrc ? (
-                  <video
-                    ref={videoRef}
-                    src={p.videoSrc}
-                    className="absolute inset-0 w-full h-full object-cover"
-                    autoPlay={p.playing}
-                    muted={p.muted}
-                    loop
-                    playsInline
-                  />
-                ) : total > 0 ? (
-                  <img
-                    src={p.media[idx]}
-                    alt=""
-                    className="absolute inset-0 w-full h-full object-cover"
-                    draggable={false}
-                  />
-                ) : (
-                  <div className="absolute inset-0 grid place-items-center text-sm text-slate-500">
-                    Add media
-                  </div>
-                )}
-
-                {/* per-image headline */}
-                {p.type !== "video" &&
-                total > 0 &&
-                (p.mediaMeta?.[idx]?.headline || "").trim() ? (
-                  <div className="absolute left-3 top-3 bg-white/90 px-2 py-1 rounded shadow text-sm">
-                    {p.mediaMeta[idx].headline}
-                  </div>
-                ) : null}
-
-                {/* controls overlay */}
-                {p.type !== "video" && total > 1 ? (
-                  <div className="absolute inset-0 p-2 pointer-events-none">
-                    <div className="h-full flex items-center justify-between">
-                      <button
-                        type="button"
-                        className="pointer-events-auto w-8 h-8 rounded-full bg-white/90 ring-1 ring-black/10 flex items-center justify-center"
-                        onClick={goPrev}
-                        aria-label="Previous"
-                      >
-                        ‹
-                      </button>
-                      <button
-                        type="button"
-                        className="pointer-events-auto w-8 h-8 rounded-full bg-white/90 ring-1 ring-black/10 flex items-center justify-center"
-                        onClick={goNext}
-                        aria-label="Next"
-                      >
-                        ›
-                      </button>
-                    </div>
-
-                    {/* dots */}
-                    <div className="pointer-events-none absolute bottom-2 left-0 right-0 flex justify-center gap-1">
-                      {Array.from({ length: total }).map((_, i) => (
-                        <span
-                          key={i}
-                          className={cx(
-                            "inline-block w-1.5 h-1.5 rounded-full",
-                            i === idx ? "bg-white shadow" : "bg-white/60"
-                          )}
-                        />
-                      ))}
-                    </div>
-                  </div>
-                ) : null}
-              </div>
-            </div>
-
-            {/* FB link card */}
-            {p.platform === "facebook" &&
-            (p.link?.headline || p.link?.subhead || p.link?.url) ? (
-              <div className="px-3 py-3">
-                <a
-                  href={p.link?.url || "#"}
-                  className="block border rounded-lg overflow-hidden hover:bg-slate-50 transition"
-                  onClick={(e) => e.preventDefault()}
+              {/* media area */}
+              <div className="w-full">
+                <div
+                  className={cx(
+                    "relative border-t border-b bg-black/5",
+                    aspectClass
+                  )}
                 >
-                  <div className="p-3">
-                    <div className="link-headline font-medium truncate">
-                      {p.link?.headline || "Link headline"}
+                  {/* content */}
+                  {p.type === "video" && p.videoSrc ? (
+                    <video
+                      ref={videoRef}
+                      src={p.videoSrc}
+                      className="absolute inset-0 w-full h-full object-cover"
+                      autoPlay={p.playing}
+                      muted={p.muted}
+                      loop
+                      playsInline
+                    />
+                  ) : total > 0 ? (
+                    <img
+                      src={p.media[idx]}
+                      alt=""
+                      className="absolute inset-0 w-full h-full object-cover"
+                      draggable={false}
+                    />
+                  ) : (
+                    <div className="absolute inset-0 grid place-items-center text-sm text-slate-500">
+                      Add media
                     </div>
-                    <div className="link-subhead text-sm text-slate-600 truncate">
-                      {p.link?.subhead || "Add a subhead"}
-                    </div>
-                    <div className="mt-2 text-xs text-slate-500 truncate">
-                      {tryGetHostname(p.link?.url)}
-                    </div>
-                    <div className="mt-3">
-                      <span className="cta inline-block px-3 py-1 rounded bg-slate-900 text-white text-sm">
-                        {p.link?.cta || "Learn More"}
-                      </span>
-                    </div>
-                  </div>
-                </a>
-              </div>
-            ) : null}
+                  )}
 
-            {/* footer metrics */}
-            <div className="px-3 py-2 border-t text-xs text-slate-500 flex items-center gap-4">
-              {["likes", "comments", "shares", "saves", "views"].map((k) =>
-                p.metrics?.[k] ? (
-                  <span key={k}>
-                    {labelForMetric(k)} {formatNumber(p.metrics[k])}
-                  </span>
-                ) : null
-              )}
+                  {/* per-image headline */}
+                  {p.type !== "video" &&
+                  total > 0 &&
+                  (p.mediaMeta?.[idx]?.headline || "").trim() ? (
+                    <div className="absolute left-3 top-3 bg-white/90 px-2 py-1 rounded shadow text-sm">
+                      {p.mediaMeta[idx].headline}
+                    </div>
+                  ) : null}
+
+                  {/* controls overlay */}
+                  {p.type !== "video" && total > 1 ? (
+                    <div className="absolute inset-0 p-2 pointer-events-none">
+                      <div className="h-full flex items-center justify-between">
+                        <button
+                          type="button"
+                          className="pointer-events-auto w-8 h-8 rounded-full bg-white/90 ring-1 ring-black/10 flex items-center justify-center"
+                          onClick={goPrev}
+                          aria-label="Previous"
+                        >
+                          ‹
+                        </button>
+                        <button
+                          type="button"
+                          className="pointer-events-auto w-8 h-8 rounded-full bg-white/90 ring-1 ring-black/10 flex items-center justify-center"
+                          onClick={goNext}
+                          aria-label="Next"
+                        >
+                          ›
+                        </button>
+                      </div>
+
+                      {/* dots */}
+                      <div className="pointer-events-none absolute bottom-2 left-0 right-0 flex justify-center gap-1">
+                        {Array.from({ length: total }).map((_, i) => (
+                          <span
+                            key={i}
+                            className={cx(
+                              "inline-block w-1.5 h-1.5 rounded-full",
+                              i === idx ? "bg-white shadow" : "bg-white/60"
+                            )}
+                          />
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
+              </div>
+
+              {/* FB link card */}
+              {p.platform === "facebook" &&
+              (p.link?.headline || p.link?.subhead || p.link?.url) ? (
+                <div className="px-3 py-3">
+                  <a
+                    href={p.link?.url || "#"}
+                    className="block border rounded-lg overflow-hidden hover:bg-slate-50 transition"
+                    onClick={(e) => e.preventDefault()}
+                  >
+                    <div className="p-3">
+                      <div className="link-headline font-medium truncate">
+                        {p.link?.headline || "Link headline"}
+                      </div>
+                      <div className="link-subhead text-sm text-slate-600 truncate">
+                        {p.link?.subhead || "Add a subhead"}
+                      </div>
+                      <div className="mt-2 text-xs text-slate-500 truncate">
+                        {tryGetHostname(p.link?.url)}
+                      </div>
+                      <div className="mt-3">
+                        <span className="cta inline-block px-3 py-1 rounded bg-slate-900 text-white text-sm">
+                          {p.link?.cta || "Learn More"}
+                        </span>
+                      </div>
+                    </div>
+                  </a>
+                </div>
+              ) : null}
+
+              {/* footer metrics */}
+              <div className="px-3 py-2 border-t text-xs text-slate-500 flex items-center gap-4">
+                {["likes", "comments", "shares", "saves", "views"].map((k) =>
+                  p.metrics?.[k] ? (
+                    <span key={k}>
+                      {labelForMetric(k)} {formatNumber(p.metrics[k])}
+                    </span>
+                  ) : null
+                )}
+              </div>
             </div>
           </div>
         </div>
