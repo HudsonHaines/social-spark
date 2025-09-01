@@ -40,26 +40,27 @@ const RightPreview = forwardRef(function RightPreview(
 
   const aspectClass = getAspectClass(aspectRatio);
 
-  // Enhanced dynamic sizing based on aspect ratio and viewport
+  // Enhanced dynamic sizing based on aspect ratio and viewport - maximized for better visibility
   const dynamicSizing = useMemo(() => {
     const isPortrait = aspectRatio === "9:16" || aspectRatio === "4:5";
     const isLandscape = aspectRatio === "16:9" || aspectRatio === "1.91:1";
 
     if (mode === "present") {
       if (isPortrait) {
-        return { maxWidth: "min(400px, 85vw)", maxHeight: "85vh" };
+        return { maxWidth: "min(500px, 90vw)", maxHeight: "90vh" };
       } else if (isLandscape) {
-        return { maxWidth: "min(720px, 90vw)", maxHeight: "70vh" };
+        return { maxWidth: "min(800px, 95vw)", maxHeight: "80vh" };
       } else {
-        return { maxWidth: "min(500px, 85vw)", maxHeight: "85vh" };
+        return { maxWidth: "min(600px, 90vw)", maxHeight: "90vh" };
       }
     } else {
+      // Create mode - maximized for better editing experience
       if (isPortrait) {
-        return { maxWidth: "min(320px, 75vw)", maxHeight: "75vh" };
+        return { maxWidth: "min(450px, 85vw)", maxHeight: "85vh" };
       } else if (isLandscape) {
-        return { maxWidth: "min(560px, 85vw)", maxHeight: "60vh" };
+        return { maxWidth: "min(700px, 90vw)", maxHeight: "75vh" };
       } else {
-        return { maxWidth: "min(400px, 80vw)", maxHeight: "75vh" };
+        return { maxWidth: "min(550px, 85vw)", maxHeight: "85vh" };
       }
     }
   }, [aspectRatio, mode]);
@@ -125,40 +126,21 @@ const RightPreview = forwardRef(function RightPreview(
 
   return (
     <div className={cx(normalizedPost.platform === "instagram" ? "ig-ui" : "fb-ui", "h-full flex flex-col")}>
-      {showExport ? (
-        <div className="flex justify-end mb-2 flex-shrink-0">
-          <button
-            className={cx(
-              "btn-outline",
-              (isExporting || !imagesReady) && "opacity-50 cursor-not-allowed"
-            )}
-            disabled={isExporting || !imagesReady}
-            onClick={() => stableExport(previewRef)}
-            title={!imagesReady ? "Waiting for images to load..." : "Export PNG"}
-          >
-            {isExporting ? (
-              <>
-                <div className="w-4 h-4 mr-2 border-2 border-slate-500 border-t-transparent rounded-full animate-spin" />
-                Exporting...
-              </>
-            ) : !imagesReady ? (
-              "Loading images..."
-            ) : (
-              "Export PNG"
-            )}
-          </button>
-        </div>
-      ) : null}
-
-      <div className="flex-1 flex items-center justify-center overflow-hidden p-2">
-        <div className="w-full h-full flex items-center justify-center">
+      <div className="flex-1 flex items-start justify-center overflow-hidden p-4">
+        <div className="w-full h-full flex items-start justify-center">
           <div 
             className="mx-auto flex-shrink-0" 
             style={wrapperStyle}
           >
-            <div ref={previewRef} className="card p-0 overflow-hidden w-full">
-              <div className="flex items-center gap-3 p-3">
-                <div className="w-10 h-10 rounded-full bg-slate-200 overflow-hidden shrink-0">
+            <div ref={previewRef} className={cx(
+              "bg-white overflow-hidden w-full",
+              normalizedPost.platform === "facebook" ? "fb-post-container" : "card p-0"
+            )}>
+              <div className={cx(
+                "flex items-center gap-3",
+                normalizedPost.platform === "facebook" ? "px-4 py-3" : "p-3"
+              )}>
+                <div className="w-10 h-10 rounded-full bg-gray-200 overflow-hidden shrink-0">
                   {normalizedPost.brand?.profileSrc ? (
                     <img
                       src={normalizedPost.brand.profileSrc}
@@ -168,31 +150,56 @@ const RightPreview = forwardRef(function RightPreview(
                     />
                   ) : null}
                 </div>
-                <div className="min-w-0">
-                  <div className="brand-name font-medium truncate">
-                    {normalizedPost.brand?.name || normalizedPost.brand?.username || "Brand"}
-                    {normalizedPost.brand?.verified ? (
-                      <span className="ml-1 align-middle text-sky-500">✓</span>
-                    ) : null}
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center">
+                    <div className="brand-name font-semibold text-gray-900 truncate text-sm">
+                      {normalizedPost.brand?.name || normalizedPost.brand?.username || "Brand"}
+                    </div>
+                    {normalizedPost.brand?.verified && (
+                      <div className="ml-1 flex-shrink-0">
+                        <svg className="w-3.5 h-3.5 text-blue-500" fill="currentColor" viewBox="0 0 20 20">
+                          <path fillRule="evenodd" d="M6.267 3.455a3.066 3.066 0 001.745-.723 3.066 3.066 0 013.976 0 3.066 3.066 0 001.745.723 3.066 3.066 0 012.812 2.812c.051.643.304 1.254.723 1.745a3.066 3.066 0 010 3.976 3.066 3.066 0 00-.723 1.745 3.066 3.066 0 01-2.812 2.812 3.066 3.066 0 00-1.745.723 3.066 3.066 0 01-3.976 0 3.066 3.066 0 00-1.745-.723 3.066 3.066 0 01-2.812-2.812 3.066 3.066 0 00-.723-1.745 3.066 3.066 0 010-3.976 3.066 3.066 0 00.723-1.745 3.066 3.066 0 012.812-2.812zm7.44 5.252a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                        </svg>
+                      </div>
+                    )}
+                    {normalizedPost.platform === "facebook" && (
+                      <div className="ml-2 flex-shrink-0">
+                        <span className="text-xs text-gray-500 font-normal">Sponsored</span>
+                      </div>
+                    )}
                   </div>
-                  <div className="meta text-xs text-slate-500 truncate">
+                  <div className="meta text-xs text-gray-500 truncate">
                     {normalizedPost.platform === "instagram"
                       ? `@${normalizedPost.brand?.username || "username"}`
-                      : "Facebook · Now"}
+                      : "2h · 🌐"}
                   </div>
                 </div>
+                {normalizedPost.platform === "facebook" && (
+                  <div className="flex-shrink-0">
+                    <button className="p-1 hover:bg-gray-100 rounded-full">
+                      <svg className="w-5 h-5 text-gray-600" fill="currentColor" viewBox="0 0 20 20">
+                        <path d="M10 6a2 2 0 110-4 2 2 0 010 4zM10 12a2 2 0 110-4 2 2 0 010 4zM10 18a2 2 0 110-4 2 2 0 010 4z" />
+                      </svg>
+                    </button>
+                  </div>
+                )}
               </div>
 
               {normalizedPost.caption ? (
-                <div className="px-3 pb-3">
-                  <div className="whitespace-pre-wrap text-sm">{normalizedPost.caption}</div>
+                <div className={cx(
+                  normalizedPost.platform === "facebook" ? "px-4 pb-3" : "px-3 pb-3"
+                )}>
+                  <div className="whitespace-pre-wrap text-sm text-gray-900 leading-relaxed">
+                    {normalizedPost.caption}
+                  </div>
                 </div>
               ) : null}
 
               <div className="w-full">
                 <div
                   className={cx(
-                    "relative border-t border-b bg-black/5",
+                    "relative bg-black overflow-hidden",
+                    normalizedPost.platform === "facebook" ? "border-0" : "border-t border-b bg-black/5",
                     aspectClass
                   )}
                 >
@@ -201,10 +208,17 @@ const RightPreview = forwardRef(function RightPreview(
                       ref={videoRef}
                       src={normalizedPost.videoSrc}
                       className="absolute inset-0 w-full h-full object-cover"
-                      autoPlay={normalizedPost.playing}
-                      muted={normalizedPost.muted}
+                      controls
+                      muted
                       loop
                       playsInline
+                      onClick={(e) => {
+                        if (e.target.paused) {
+                          e.target.play();
+                        } else {
+                          e.target.pause();
+                        }
+                      }}
                     />
                   ) : mediaCount > 0 ? (
                     <img
@@ -266,41 +280,87 @@ const RightPreview = forwardRef(function RightPreview(
 
               {normalizedPost.platform === "facebook" &&
               (normalizedPost.link?.headline || normalizedPost.link?.subhead || normalizedPost.link?.url) ? (
-                <div className="px-3 py-3">
+                <div className="border-t border-gray-200">
                   <a
                     href={normalizedPost.link?.url || "#"}
-                    className="block border rounded-lg overflow-hidden hover:bg-slate-50 transition"
+                    className="block hover:bg-gray-50 transition-colors duration-150"
                     onClick={(e) => e.preventDefault()}
                   >
-                    <div className="p-3">
-                      <div className="link-headline font-medium truncate">
+                    <div className="px-4 py-3 bg-gray-50 border-b border-gray-200">
+                      <div className="text-xs text-gray-500 uppercase tracking-wide font-semibold">
+                        {tryGetHostname(normalizedPost.link?.url) || normalizedPost.link?.url?.toUpperCase() || "WEBSITE"}
+                      </div>
+                    </div>
+                    <div className="px-4 py-3">
+                      <div className="link-headline text-gray-900 font-medium text-base leading-snug mb-1">
                         {normalizedPost.link?.headline || "Link headline"}
                       </div>
-                      <div className="link-subhead text-sm text-slate-600 truncate">
+                      <div className="link-subhead text-sm text-gray-600 leading-normal">
                         {normalizedPost.link?.subhead || "Add a subhead"}
                       </div>
-                      <div className="mt-2 text-xs text-slate-500 truncate">
-                        {tryGetHostname(normalizedPost.link?.url)}
-                      </div>
-                      <div className="mt-3">
-                        <span className="cta inline-block px-3 py-1 rounded bg-slate-900 text-white text-sm">
-                          {normalizedPost.link?.cta || "Learn More"}
-                        </span>
+                      <div className="mt-3 flex items-center justify-between">
+                        <div className="flex items-center">
+                          <span className="cta inline-flex items-center px-4 py-2 rounded-md bg-blue-500 hover:bg-blue-600 text-white text-sm font-medium transition-colors duration-150">
+                            {normalizedPost.link?.cta || "Learn More"}
+                          </span>
+                        </div>
                       </div>
                     </div>
                   </a>
                 </div>
               ) : null}
 
-              <div className="px-3 py-2 border-t text-xs text-slate-500 flex items-center gap-4">
-                {["likes", "comments", "shares", "saves", "views"].map((metricKey) =>
-                  normalizedPost.metrics?.[metricKey] ? (
-                    <span key={metricKey}>
-                      {labelForMetric(metricKey)} {formatNumber(normalizedPost.metrics[metricKey])}
-                    </span>
-                  ) : null
-                )}
-              </div>
+              {normalizedPost.platform === "facebook" ? (
+                <div className="border-t border-gray-200">
+                  {/* Facebook engagement actions */}
+                  <div className="px-4 py-3 flex items-center justify-between text-gray-500">
+                    <div className="flex items-center space-x-6">
+                      <button className="flex items-center space-x-2 hover:text-blue-500 transition-colors">
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
+                        </svg>
+                        <span className="text-sm">Like</span>
+                      </button>
+                      <button className="flex items-center space-x-2 hover:text-blue-500 transition-colors">
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                        </svg>
+                        <span className="text-sm">Comment</span>
+                      </button>
+                      <button className="flex items-center space-x-2 hover:text-blue-500 transition-colors">
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.367 2.684 3 3 0 00-5.367-2.684z" />
+                        </svg>
+                        <span className="text-sm">Share</span>
+                      </button>
+                    </div>
+                  </div>
+                  {/* Metrics display */}
+                  {Object.keys(normalizedPost.metrics || {}).some(key => normalizedPost.metrics[key]) && (
+                    <div className="px-4 pb-2 text-xs text-gray-500 border-t border-gray-100">
+                      <div className="flex items-center gap-4 py-2">
+                        {["likes", "comments", "shares", "views"].map((metricKey) =>
+                          normalizedPost.metrics?.[metricKey] ? (
+                            <span key={metricKey}>
+                              {formatNumber(normalizedPost.metrics[metricKey])} {labelForMetric(metricKey).toLowerCase()}
+                            </span>
+                          ) : null
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="px-3 py-2 border-t text-xs text-slate-500 flex items-center gap-4">
+                  {["likes", "comments", "shares", "saves", "views"].map((metricKey) =>
+                    normalizedPost.metrics?.[metricKey] ? (
+                      <span key={metricKey}>
+                        {labelForMetric(metricKey)} {formatNumber(normalizedPost.metrics[metricKey])}
+                      </span>
+                    ) : null
+                  )}
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -312,6 +372,24 @@ const RightPreview = forwardRef(function RightPreview(
         .aspect-\\[4\\/5\\] { aspect-ratio: 4 / 5; }
         .aspect-\\[9\\/16\\] { aspect-ratio: 9 / 16; }
         .aspect-\\[1\\.91\\/1\\] { aspect-ratio: 1.91 / 1; }
+        
+        .fb-post-container {
+          border: 1px solid #e4e6ea;
+          border-radius: 8px;
+          background: #ffffff;
+          box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+          font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        }
+        
+        .fb-ui .brand-name {
+          color: #1c1e21;
+          font-weight: 600;
+        }
+        
+        .fb-ui .meta {
+          color: #65676b;
+          font-size: 13px;
+        }
       `}</style>
     </div>
   );

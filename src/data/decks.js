@@ -1,4 +1,5 @@
 import { supabase } from "../lib/supabaseClient";
+import { handleSupabaseError, withRetry, validators } from '../lib/supabaseUtils';
 
 // Input validation helpers
 const validateUserId = (userId) => {
@@ -155,16 +156,20 @@ export async function revokeDeckShare(token) {
     throw handleSupabaseError(new Error('Valid share token is required'), { token });
   }
   
-  return executeSupabaseQuery(
-    () => supabase
+  try {
+    const { error } = await supabase
       .from("deck_shares")
       .update({ 
         is_revoked: true, 
         revoked_at: new Date().toISOString() 
       })
-      .eq("token", token),
-    { operation: 'revokeDeckShare', token }
-  ).then(() => true);
+      .eq("token", token);
+    
+    if (error) throw error;
+    return true;
+  } catch (error) {
+    throw handleSupabaseError(error, { operation: 'revokeDeckShare', token });
+  }
 }
 
 // Get deck share info
@@ -173,8 +178,8 @@ export async function getDeckShareInfo(token) {
     throw handleSupabaseError(new Error('Valid share token is required'), { token });
   }
   
-  return executeSupabaseQuery(
-    () => supabase
+  try {
+    const { data, error } = await supabase
       .from("deck_shares")
       .select(`
         token,
@@ -186,9 +191,92 @@ export async function getDeckShareInfo(token) {
         decks!inner(id, title, user_id)
       `)
       .eq("token", token)
-      .single(),
-    { operation: 'getDeckShareInfo', token }
-  ).then(result => result.data);
+      .single();
+    
+    if (error) throw error;
+    return data;
+  } catch (error) {
+    throw handleSupabaseError(error, { operation: 'getDeckShareInfo', token });
+  }
+}
+
+// Get all share links for a user
+export async function getUserDeckShares(userId) {
+  validateUserId(userId);
+  
+  try {
+    const { data, error } = await supabase
+      .from("deck_shares")
+      .select(`
+        token,
+        expires_at,
+        is_revoked,
+        created_at,
+        revoked_at,
+        share_count,
+        max_shares,
+        last_accessed_at,
+        decks!inner(id, title, user_id)
+      `)
+      .eq("decks.user_id", userId)
+      .order("created_at", { ascending: false });
+    
+    if (error) throw error;
+    return data || [];
+  } catch (error) {
+    throw handleSupabaseError(error, { operation: 'getUserDeckShares', userId });
+  }
+}
+
+// Update share link expiration
+export async function updateDeckShareExpiration(token, expirationDate) {
+  if (!validators.nonEmptyString(token)) {
+    throw handleSupabaseError(new Error('Valid share token is required'), { token });
+  }
+  
+  const expires_at = expirationDate ? new Date(expirationDate).toISOString() : null;
+  
+  try {
+    const { data, error } = await supabase
+      .from("deck_shares")
+      .update({ expires_at })
+      .eq("token", token)
+      .select()
+      .single();
+    
+    if (error) throw error;
+    return data;
+  } catch (error) {
+    throw handleSupabaseError(error, { operation: 'updateDeckShareExpiration', token, expires_at });
+  }
+}
+
+// Get share link analytics/stats
+export async function getDeckShareStats(token) {
+  if (!validators.nonEmptyString(token)) {
+    throw handleSupabaseError(new Error('Valid share token is required'), { token });
+  }
+  
+  try {
+    const { data, error } = await supabase
+      .from("deck_shares")
+      .select(`
+        token,
+        share_count,
+        max_shares,
+        created_at,
+        last_accessed_at,
+        expires_at,
+        is_revoked
+      `)
+      .eq("token", token)
+      .single();
+    
+    if (error) throw error;
+    return data;
+  } catch (error) {
+    throw handleSupabaseError(error, { operation: 'getDeckShareStats', token });
+  }
 }
 
 // Export validation helpers for use in components

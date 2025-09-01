@@ -14,6 +14,7 @@ import MenuDrawer from "./components/MenuDrawer";
 import DeckPickerV3 from "./decks/DeckPickerV3";
 import DecksPage from "./decks/DecksPage";
 import BrandsPage from "./brands/BrandsPage";
+import ShareLinksPage from "./share/ShareLinksPage";
 import EditorPresentMode from "./components/EditorPresentMode";
 
 import { emptyPost, ensurePostShape } from "./data/postShape";
@@ -36,7 +37,7 @@ export default function App() {
   // App navigation state
   const [appState, setAppState] = useState({
     mode: "create", // create | present
-    page: "editor", // editor | decks | brands
+    page: "editor", // editor | decks | brands | sharelinks
   });
   
   // Presentation state
@@ -352,7 +353,7 @@ export default function App() {
   return (
     <Fragment>
       <AppShell
-        singleColumn={appState.page === "decks" || appState.page === "brands"}
+        singleColumn={appState.page === "decks" || appState.page === "brands" || appState.page === "sharelinks"}
         topBarProps={{
           mode: appState.mode,
           setMode: (mode) => setAppState(prev => ({ ...prev, mode })),
@@ -379,6 +380,8 @@ export default function App() {
               onBack={() => navigateToPage("editor")}
               onOpenBrandManager={() => setUiState(prev => ({ ...prev, brandManagerOpen: true }))}
             />
+          ) : appState.page === "sharelinks" ? (
+            <ShareLinksPage />
           ) : appState.mode === "present" ? null : (
             <LeftPanel
               user={authenticatedUser}
@@ -399,6 +402,9 @@ export default function App() {
               openBrandManager={() => setUiState(prev => ({ ...prev, brandManagerOpen: true }))}
               saveToDeck={saveToDeck}
               openDeckPicker={openDeckPicker}
+              onExportPNG={handleExportPNG}
+              isExporting={isExporting}
+              imagesReady={imagesReady}
             />
           )
         }
@@ -420,10 +426,8 @@ export default function App() {
                 post={post}
                 setPost={setPost}
                 mode={appState.mode}
-                saveAsPng={handleExportPNG}
-                savingImg={isExporting}
                 videoRef={videoRef}
-                showExport={true}
+                showExport={false}
               />
             )
         }
@@ -448,6 +452,7 @@ export default function App() {
         onClose={() => setUiState(prev => ({ ...prev, menuOpen: false }))}
         onOpenDeckManager={() => navigateToPage("decks")}
         onOpenBrandsPage={() => navigateToPage("brands")}
+        onOpenShareLinks={() => navigateToPage("sharelinks")}
       />
 
       <DeckPickerV3

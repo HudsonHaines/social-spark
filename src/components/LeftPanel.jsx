@@ -1,5 +1,5 @@
 // src/components/LeftPanel.jsx
-import React, { useRef, useMemo, memo, useCallback } from "react";
+import React, { useRef, useMemo, memo, useCallback, useState } from "react";
 import {
   Settings2,
   Image as ImageIcon,
@@ -8,16 +8,38 @@ import {
   Film,
   Eye,
   Copy,
+  ChevronDown,
+  ChevronRight,
+  Save,
+  Download,
+  Play,
 } from "lucide-react";
 import { useBrands } from "../data/brands";
 
 const cx = (...a) => a.filter(Boolean).join(" ");
 
-function Section({ title, children }) {
+function WorkflowStep({ title, children, className = "" }) {
   return (
-    <div className="space-y-3">
-      <div className="label-strong">{title}</div>
-      <div className="space-y-3">{children}</div>
+    <div className={cx("space-y-3", className)}>
+      <div className="text-sm font-semibold text-gray-700">{title}</div>
+      {children}
+    </div>
+  );
+}
+
+function CollapsibleSection({ title, children, defaultOpen = false }) {
+  const [isOpen, setIsOpen] = useState(defaultOpen);
+  
+  return (
+    <div className="border-t border-gray-200 pt-4">
+      <button
+        onClick={() => setIsOpen(!isOpen)}
+        className="flex items-center justify-between w-full text-left text-sm font-medium text-gray-600 hover:text-gray-900 transition-colors"
+      >
+        <span>{title}</span>
+        {isOpen ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+      </button>
+      {isOpen && <div className="mt-3 space-y-3">{children}</div>}
     </div>
   );
 }
@@ -28,8 +50,8 @@ function Radio({ label, checked, onChange, name, value, id }) {
       className={cx(
         "px-3 py-2 rounded-lg border cursor-pointer select-none text-sm transition-colors",
         checked 
-          ? "bg-app-strong text-white border-app-strong" 
-          : "bg-white hover:bg-slate-50 border-app-border"
+          ? "bg-blue-600 text-white border-blue-600 font-medium" 
+          : "bg-white hover:bg-slate-50 border-gray-300 text-gray-700"
       )}
       htmlFor={id}
     >
@@ -47,41 +69,77 @@ function Radio({ label, checked, onChange, name, value, id }) {
   );
 }
 
-// NEW: Platform Selector Component
-function PlatformSelector({ platform, setPlatform }) {
+// Compact Platform & Brand Bar
+function FoundationBar({ post, update, brands, onSelectBrand, openBrandManager }) {
+  const selectedBrand = brands.find(b => b.id === (post?.brandId ?? post?.brand?.id)) || null;
+  
   return (
-    <div className="space-y-3">
-      <div className="flex gap-2">
-        <button
-          className={cx(
-            "btn-outline flex-1 flex items-center justify-center",
-            platform === "facebook" ? "bg-blue-50 border-blue-300 text-blue-700" : ""
-          )}
-          onClick={() => setPlatform("facebook")}
-          aria-pressed={platform === "facebook"}
+    <div className="bg-white border-b border-gray-200 p-4 flex-shrink-0">
+      {/* Platform Toggle */}
+      <div className="flex items-center gap-3 mb-3">
+        <div className="flex bg-gray-100 rounded-lg p-1">
+          <button
+            className={cx(
+              "px-3 py-1.5 rounded-md text-sm font-medium transition-all",
+              post.platform === "facebook" 
+                ? "bg-white shadow-sm text-blue-600" 
+                : "text-gray-600 hover:text-gray-900"
+            )}
+            onClick={() => update({ platform: "facebook" })}
+          >
+            f Facebook
+          </button>
+          <button
+            className={cx(
+              "px-3 py-1.5 rounded-md text-sm font-medium transition-all",
+              post.platform === "instagram" 
+                ? "bg-white shadow-sm text-pink-600" 
+                : "text-gray-600 hover:text-gray-900"
+            )}
+            onClick={() => update({ platform: "instagram" })}
+          >
+            📷 Instagram
+          </button>
+        </div>
+      </div>
+
+      {/* Brand Selection */}
+      <div className="flex items-center gap-2">
+        <select
+          className="flex-1 text-sm border border-gray-300 rounded-lg px-3 py-2 bg-white"
+          value={post?.brandId || post?.brand?.id || ""}
+          onChange={(e) => onSelectBrand(e.target.value || null)}
         >
-          <span className="text-blue-600 mr-2 font-bold text-lg">f</span>
-          Facebook
-        </button>
-        <button
-          className={cx(
-            "btn-outline flex-1 flex items-center justify-center",
-            platform === "instagram" ? "bg-pink-50 border-pink-300 text-pink-700" : ""
-          )}
-          onClick={() => setPlatform("instagram")}
-          aria-pressed={platform === "instagram"}
+          <option value="">Choose brand...</option>
+          {brands.map((b) => (
+            <option key={b.id} value={b.id}>
+              {b.fb_name || "Brand"} {b.verified ? "✓" : ""}
+            </option>
+          ))}
+        </select>
+        <button 
+          onClick={openBrandManager}
+          className="px-3 py-2 text-sm text-gray-600 hover:text-gray-900 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
         >
-          <span className="mr-2">📷</span>
-          Instagram
+          Manage
         </button>
       </div>
-      {/* Platform-specific hints */}
-      <div className="text-xs text-app-muted">
-        {platform === "instagram" 
-          ? "Instagram posts are always square (1:1 aspect ratio)"
-          : "Facebook supports multiple aspect ratios - select one below in Media section"
-        }
-      </div>
+      
+      {/* Selected Brand Preview */}
+      {selectedBrand && (
+        <div className="mt-2 flex items-center gap-2 text-xs text-gray-600">
+          <div className="w-4 h-4 rounded-full bg-gray-200 overflow-hidden">
+            {selectedBrand[post.platform === "facebook" ? "fb_avatar_url" : "ig_avatar_url"] && (
+              <img 
+                src={selectedBrand[post.platform === "facebook" ? "fb_avatar_url" : "ig_avatar_url"]} 
+                className="w-full h-full object-cover" 
+                alt="" 
+              />
+            )}
+          </div>
+          <span>{post.platform === "facebook" ? selectedBrand.fb_name : `@${selectedBrand.ig_username}`}</span>
+        </div>
+      )}
     </div>
   );
 }
@@ -97,14 +155,7 @@ const LeftPanel = memo(function LeftPanel(props) {
     handleVideoFile,
     clearVideo,
     removeImageAt,
-    // deck operations consolidated
-    deckActions = {},
-    // brand manager
-    openBrandManager,
-  } = props;
-
-  // Destructure deck operations with defaults
-  const {
+    // deck operations - direct props from App.jsx
     deck = [],
     loadFromDeck = () => {},
     deleteFromDeck = () => {},
@@ -114,7 +165,13 @@ const LeftPanel = memo(function LeftPanel(props) {
     openDeckPicker = () => {},
     addToDeck = () => {},
     loadingDeck = false,
-  } = deckActions;
+    // brand manager
+    openBrandManager,
+    // export functionality
+    onExportPNG,
+    isExporting = false,
+    imagesReady = true,
+  } = props;
 
   if (!post) return null;
 
@@ -163,273 +220,131 @@ const LeftPanel = memo(function LeftPanel(props) {
     syncPostBrandFromRow(row);
   }, [brandRows, syncPostBrandFromRow]);
 
-  return (
-    <div className="panel overflow-hidden flex flex-col h-full">
-      {/* Fixed header */}
-      <div className="panel-header flex items-center gap-2 flex-shrink-0">
-        <Settings2 className="w-4 h-4 text-app-body" />
-        <span className="font-medium text-app-strong">Controls</span>
+  // Sticky Actions Bar
+  const ActionsBar = () => (
+    <div className="bg-white border-t border-gray-200 p-4 flex-shrink-0">
+      <div className="grid grid-cols-3 gap-3">
+        <button
+          onClick={() => openDeckPicker?.()}
+          className="flex flex-col items-center gap-1 p-3 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+        >
+          <Save size={16} className="text-gray-600" />
+          <span className="text-xs text-gray-700">Save</span>
+        </button>
+        
+        <button
+          onClick={onExportPNG}
+          disabled={isExporting || !imagesReady}
+          className={cx(
+            "flex flex-col items-center gap-1 p-3 rounded-lg transition-colors",
+            isExporting || !imagesReady 
+              ? "bg-gray-100 text-gray-400 cursor-not-allowed" 
+              : "bg-blue-500 text-white hover:bg-blue-600"
+          )}
+        >
+          {isExporting ? (
+            <>
+              <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+              <span className="text-xs">Exporting...</span>
+            </>
+          ) : (
+            <>
+              <Download size={16} />
+              <span className="text-xs">Export</span>
+            </>
+          )}
+        </button>
+        
+        <button
+          onClick={() => startPresentingDeck?.()}
+          disabled={!deck?.length}
+          className="flex flex-col items-center gap-1 p-3 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50"
+        >
+          <Play size={16} className="text-gray-600" />
+          <span className="text-xs text-gray-700">Present</span>
+        </button>
       </div>
+    </div>
+  );
 
-      {/* Single scrollable region */}
-      <div 
-        className="flex-1 overflow-auto bg-app-surface"
-        style={{ height: 'calc(100vh - 12rem)' }}
-      >
+  return (
+    <div className="bg-white border-r border-gray-200 flex flex-col h-full">
+      {/* Step 1: Foundation (Always visible, compact) */}
+      <FoundationBar 
+        post={post}
+        update={update}
+        brands={brandRows}
+        onSelectBrand={handlePickBrand}
+        openBrandManager={openBrandManager}
+      />
+
+      {/* Step 2: Content Creation (Main scrollable area) */}
+      <div className="flex-1 overflow-auto">
         <div className="p-4 space-y-6">
-          {/* NEW: Platform Section - Added at the top */}
-          <Section title="Platform">
-            <PlatformSelector 
-              platform={post.platform || "facebook"} 
-              setPlatform={useCallback((p) => update({ platform: p }), [update])}
+          {/* Post Copy - Primary focus */}
+          <WorkflowStep title="✍️ Post Copy">
+            <textarea
+              className="w-full border border-gray-300 rounded-lg px-3 py-3 text-sm resize-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
+              rows={4}
+              value={post.caption || ""}
+              onChange={(e) => update({ caption: e.target.value })}
+              placeholder="Write your post copy here..."
             />
-          </Section>
-
-          {/* Divider */}
-          <div className="border-t border-app-border"></div>
-
-          {/* Brand Section - Simplified */}
-          <Section title="Brand">
-            <div className="flex items-center gap-2">
-              <select
-                id="brand_select"
-                name="brand_select"
-                className="select flex-1"
-                value={safeBrandId || ""}
-                onChange={(e) => handlePickBrand(e.target.value || null)}
-              >
-                <option value="">Select a brand</option>
-                {brandRows.map((b) => (
-                  <option key={b.id} value={b.id}>
-                    {(b.fb_name || "FB name")} · @{b.ig_username || "ig"}
-                    {b.verified ? " ✓" : ""}
-                  </option>
-                ))}
-              </select>
-              <button type="button" className="btn-outline flex-shrink-0" onClick={openBrandManager}>
-                Manage
-              </button>
+            <div className="text-xs text-gray-500 text-right">
+              {(post.caption || "").length} characters
             </div>
+          </WorkflowStep>
 
-            {/* Simple brand preview */}
-            {selectedBrand && (
-              <div className="flex items-center gap-3 p-3 bg-slate-50 rounded-lg">
-                <div className="w-10 h-10 rounded-full bg-app-muted overflow-hidden flex items-center justify-center flex-shrink-0">
-                  {post.platform === "facebook" ? (
-                    selectedBrand?.fb_avatar_url ? (
-                      <img
-                        src={selectedBrand.fb_avatar_url}
-                        className="w-full h-full object-cover"
-                        alt=""
-                      />
-                    ) : (
-                      <ImageIcon className="w-5 h-5 text-app-muted" />
-                    )
-                  ) : selectedBrand?.ig_avatar_url ? (
-                    <img
-                      src={selectedBrand.ig_avatar_url}
-                      className="w-full h-full object-cover"
-                      alt=""
-                    />
-                  ) : (
-                    <ImageIcon className="w-5 h-5 text-app-muted" />
-                  )}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="font-medium text-sm truncate">
-                    {post.platform === "facebook" 
-                      ? (selectedBrand.fb_name || "Facebook Page")
-                      : `@${selectedBrand.ig_username || "instagram"}`
-                    }
-                    {selectedBrand.verified ? " ✓" : ""}
-                  </div>
-                  <div className="text-xs text-app-muted">
-                    {post.platform === "facebook" ? "Facebook" : "Instagram"} · {post.platform === "facebook" ? "Page" : "Account"}
-                  </div>
-                </div>
-              </div>
-            )}
-          </Section>
-
-          {/* Divider */}
-          <div className="border-t border-app-border"></div>
-
-          {/* Post copy Section */}
-          <Section title="Post copy">
-            <div>
-              <label htmlFor="post_caption" className="sr-only">
-                Post caption
-              </label>
-              <textarea
-                id="post_caption"
-                name="post_caption"
-                className="textarea"
-                rows={5}
-                value={post.caption || ""}
-                onChange={(e) => update({ caption: e.target.value })}
-                placeholder="Write your post copy here..."
+          {/* Media Upload - Streamlined */}
+          <WorkflowStep title="📷 Add Media">
+            {/* Media Type Toggle */}
+            <div className="flex bg-gray-100 rounded-lg p-1 mb-4">
+              <Radio
+                id="type_images"
+                name="media_type"
+                value="images"
+                label="Images"
+                checked={post.type !== "video"}
+                onChange={() => {
+                  const n = post.media?.length || 0;
+                  const nextType = n > 1 ? "carousel" : "single";
+                  update({ type: nextType, videoSrc: "" });
+                }}
               />
-              <div className="text-xs text-app-muted text-right mt-1">
-                {(post.caption || "").length} chars
-              </div>
-            </div>
-          </Section>
-
-          {/* Divider */}
-          <div className="border-t border-app-border"></div>
-
-          {/* Media Section */}
-          <Section title="Media">
-            <div className="flex items-center justify-between flex-wrap gap-2">
-              <div className="flex items-center gap-2">
-                <Radio
-                  id="type_images"
-                  name="media_type"
-                  value="images"
-                  label="Images"
-                  checked={post.type !== "video"}
-                  onChange={() => {
-                    const n = post.media?.length || 0;
-                    const nextType = n > 1 ? "carousel" : "single";
-                    update({ type: nextType, videoSrc: "" });
-                  }}
-                />
-                <Radio
-                  id="type_video"
-                  name="media_type"
-                  value="video"
-                  label="Video"
-                  checked={post.type === "video"}
-                  onChange={() => update({ type: "video" })}
-                />
-              </div>
-
-              <div className="flex items-center gap-3 text-sm">
-                {post.platform === "instagram" ? (
-                  <div className="w-full">
-                    <label className="block text-xs text-app-muted mb-2">Instagram ad format</label>
-                    <select
-                      className="select w-full text-sm"
-                      value={post.igAdFormat || "feed-1:1"}
-                      onChange={(e) => {
-                        const [type, ratio] = e.target.value.split('-');
-                        update({ 
-                          igAdFormat: e.target.value,
-                          fbAspectRatio: ratio, // Still use fbAspectRatio for rendering consistency
-                          igAdType: type,
-                          isReel: type === "reels" // Auto-set reel flag for Reels ads
-                        });
-                      }}
-                    >
-                      <optgroup label="📸 Feed Ads">
-                        <option value="feed-1:1">Feed - Square (1:1) - 1080×1080</option>
-                        <option value="feed-4:5">Feed - Vertical (4:5) - 1080×1350</option>
-                        <option value="feed-16:9">Feed Video - Landscape (16:9) - up to 60s</option>
-                      </optgroup>
-                      <optgroup label="📱 Stories & Reels">
-                        <option value="story-9:16">Story Ads - Vertical (9:16) - 1080×1920</option>
-                        <option value="reels-9:16">Reels Ads - Vertical (9:16) - 1080×1920</option>
-                      </optgroup>
-                      <optgroup label="🔍 Discovery">
-                        <option value="explore-1:1">Explore - Square (1:1) - 1080×1080</option>
-                        <option value="explore-4:5">Explore - Vertical (4:5) - 1080×1350</option>
-                      </optgroup>
-                      <optgroup label="🛍️ Shopping">
-                        <option value="shop-1:1">Shop Ads - Square (1:1) - 1080×1080</option>
-                        <option value="carousel-1:1">Carousel - Square (1:1) - 1080×1080</option>
-                      </optgroup>
-                    </select>
-                    
-                    {/* Format-specific notes */}
-                    <div className="text-xs text-app-muted mt-2">
-                      {post.igAdFormat === "feed-1:1" && "Most flexible format, shows in main feed"}
-                      {post.igAdFormat === "feed-4:5" && "Vertical format, takes up more feed space"}
-                      {post.igAdFormat === "feed-16:9" && "Landscape video format, up to 60 seconds"}
-                      {post.igAdFormat === "story-9:16" && "Full-screen vertical, up to 15s per card, best for swipe-up CTAs"}
-                      {post.igAdFormat === "reels-9:16" && "Plays in Reels feed, feels native, up to 90 seconds"}
-                      {post.igAdFormat === "explore-1:1" && "Shows in Explore grid when users browse"}
-                      {post.igAdFormat === "explore-4:5" && "Vertical Explore format for more visual impact"}
-                      {post.igAdFormat === "shop-1:1" && "Product-focused, connects directly to Instagram Shop"}
-                      {post.igAdFormat === "carousel-1:1" && "Up to 10 cards, great for multiple products or features"}
-                      {!post.igAdFormat && "Select an Instagram ad format to see specific notes"}
-                    </div>
-                  </div>
-                ) : (
-                  <div className="w-full">
-                    <label className="block text-xs text-app-muted mb-2">Facebook ad format</label>
-                    <select
-                      className="select w-full text-sm"
-                      value={post.fbAdFormat || "feed-1:1"}
-                      onChange={(e) => {
-                        const [type, ratio] = e.target.value.split('-');
-                        update({ 
-                          fbAdFormat: e.target.value,
-                          fbAspectRatio: ratio,
-                          fbAdType: type
-                        });
-                      }}
-                    >
-                      <optgroup label="📰 Feed Ads">
-                        <option value="feed-1:1">Feed - Square (1:1) - 1080×1080</option>
-                        <option value="feed-4:5">Feed - Vertical (4:5) - 1080×1350</option>
-                      </optgroup>
-                      <optgroup label="🎥 Video Ads">
-                        <option value="video-4:5">Video Feed - Vertical (4:5) - 1080×1350</option>
-                        <option value="video-16:9">Video Feed - Landscape (16:9) - 1280×720</option>
-                        <option value="instream-16:9">In-stream Video - Landscape (16:9) - 1280×720</option>
-                      </optgroup>
-                      <optgroup label="📱 Stories & Reels">
-                        <option value="story-9:16">Story Ads - Vertical (9:16) - 1080×1920</option>
-                        <option value="reels-9:16">Reels Ads - Vertical (9:16) - 1080×1920</option>
-                      </optgroup>
-                      <optgroup label="🛍️ Shopping">
-                        <option value="marketplace-1:1">Marketplace - Square (1:1) - 1080×1080</option>
-                        <option value="carousel-1:1">Carousel - Square (1:1) - 1080×1080</option>
-                        <option value="collection-1.91:1">Collection Cover - Landscape (1.91:1) - 1200×628</option>
-                      </optgroup>
-                      <optgroup label="💻 Desktop">
-                        <option value="rightcolumn-1:1">Right Column - Square (1:1) - 1200×1200</option>
-                      </optgroup>
-                    </select>
-                    
-                    {/* Format-specific notes */}
-                    <div className="text-xs text-app-muted mt-2">
-                      {post.fbAdFormat === "feed-1:1" && "High visibility feed placement with CTA buttons"}
-                      {post.fbAdFormat === "feed-4:5" && "Vertical feed format, great for product ads"}
-                      {post.fbAdFormat === "video-4:5" && "Auto-plays muted, short videos perform better"}
-                      {post.fbAdFormat === "video-16:9" && "Landscape video format for feed placement"}
-                      {post.fbAdFormat === "instream-16:9" && "Plays inside longer videos, skippable after 5s"}
-                      {post.fbAdFormat === "story-9:16" && "Full-screen vertical, same as Instagram Stories"}
-                      {post.fbAdFormat === "reels-9:16" && "Auto-plays in Reels feed, up to 90 seconds"}
-                      {post.fbAdFormat === "marketplace-1:1" && "Targets users actively shopping"}
-                      {post.fbAdFormat === "carousel-1:1" && "Up to 10 cards, great for product showcases"}
-                      {post.fbAdFormat === "collection-1.91:1" && "Opens Instant Experience, optimized for shopping"}
-                      {post.fbAdFormat === "rightcolumn-1:1" && "Desktop only, lower CTR but cheap impressions"}
-                      {!post.fbAdFormat && "Select a Facebook ad format to see specific notes"}
-                    </div>
-                  </div>
-                )}
-              </div>
+              <Radio
+                id="type_video"
+                name="media_type"
+                value="video"
+                label="Video"
+                checked={post.type === "video"}
+                onChange={() => update({ type: "video" })}
+              />
             </div>
 
-            {/* Upload zone */}
+            {/* Upload zone - Prominent */}
             <div
               onDragOver={(e) => {
                 e.preventDefault();
                 e.stopPropagation();
               }}
               onDrop={onDrop}
-              className="border-2 border-dashed border-app-border rounded-lg p-6 text-center bg-slate-50/50 hover:bg-slate-50 transition-colors"
+              className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center bg-gray-50 hover:bg-gray-100 hover:border-gray-400 transition-all cursor-pointer"
             >
-              <p className="text-sm text-app-body mb-3">Drag files here, or</p>
-              <div className="flex items-center justify-center gap-2 flex-wrap">
-                <button className="btn" onClick={() => fileImgRef.current?.click()}>
-                  <ImageIcon className="w-4 h-4 mr-2" />
-                  Add images
+              <ImageIcon className="w-12 h-12 mx-auto mb-3 text-gray-400" />
+              <p className="text-sm font-medium text-gray-700 mb-2">Drag files here or click to upload</p>
+              <p className="text-xs text-gray-500 mb-4">Support images and videos up to 10MB</p>
+              <div className="flex items-center justify-center gap-3">
+                <button 
+                  className="bg-blue-500 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-600 transition-colors"
+                  onClick={() => fileImgRef.current?.click()}
+                >
+                  Choose Images
                 </button>
-                <button className="btn-outline" onClick={() => fileVidRef.current?.click()}>
-                  <VideoIcon className="w-4 h-4 mr-2" />
-                  Add video
+                <button 
+                  className="border border-gray-300 px-4 py-2 rounded-lg text-sm font-medium hover:bg-gray-50 transition-colors"
+                  onClick={() => fileVidRef.current?.click()}
+                >
+                  Choose Video
                 </button>
               </div>
 
@@ -459,193 +374,237 @@ const LeftPanel = memo(function LeftPanel(props) {
               />
             </div>
 
-            {/* Image thumbnails */}
-            {post.type !== "video" && post.media?.length ? (
-              <div className="grid grid-cols-5 gap-2">
-                {post.media.map((m, i) => (
-                  <div
-                    key={i}
-                    className={cx(
-                      "relative rounded-lg overflow-hidden border cursor-pointer transition-all",
-                      i === post.activeIndex 
-                        ? "ring-2 ring-brand-500 border-brand-500" 
-                        : "border-app-border hover:border-brand-300"
-                    )}
-                    onClick={() => update({ activeIndex: i })}
-                  >
-                    <img src={m} className="w-full h-16 object-cover block" alt="" />
-                    <button
-                      className="absolute top-1 right-1 bg-white/90 hover:bg-white rounded-full p-1 shadow-sm transition-colors"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        removeImageAt(i);
-                      }}
-                      title="Remove"
-                    >
-                      <Trash2 className="w-3 h-3" />
-                    </button>
-                  </div>
-                ))}
-              </div>
-            ) : null}
-
-            {/* Video indicator */}
+            {/* Media Preview - Compact */}
             {post.type === "video" && post.videoSrc ? (
-              <div className="flex items-center justify-between p-3 bg-white rounded-lg border border-app-border">
-                <div className="text-sm text-app-body">Video loaded</div>
-                <button className="chip hover:bg-red-50 hover:text-red-600 transition-colors" onClick={clearVideo}>
-                  <Trash2 className="w-3 h-3 mr-1" />
-                  Remove video
+              <div className="flex items-center justify-between p-3 bg-blue-50 rounded-lg border border-blue-200">
+                <div className="flex items-center gap-2">
+                  <VideoIcon className="w-4 h-4 text-blue-600" />
+                  <span className="text-sm font-medium text-blue-900">Video uploaded</span>
+                </div>
+                <button 
+                  className="text-xs text-red-600 hover:text-red-800 underline"
+                  onClick={clearVideo}
+                >
+                  Remove
                 </button>
               </div>
-            ) : null}
-
-            {/* Per-image headline editor */}
-            {post.type !== "video" && (post.media?.length || 0) > 0 ? (
-              <div>
-                <label htmlFor="image_headline" className="block text-xs text-app-muted mb-2">
-                  Headline for image {post.activeIndex + 1}
-                </label>
-                <input
-                  id="image_headline"
-                  name="image_headline"
-                  className="input"
-                  placeholder="Enter headline for this image"
-                  value={post.mediaMeta?.[post.activeIndex]?.headline || ""}
-                  onChange={(e) => {
-                    const next = (post.mediaMeta || []).slice();
-                    const idx = post.activeIndex || 0;
-                    next[idx] = { ...(next[idx] || {}), headline: e.target.value };
-                    update({ mediaMeta: next });
-                  }}
-                />
+            ) : post.media?.length ? (
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium text-gray-700">
+                    {post.media.length} image{post.media.length === 1 ? '' : 's'} uploaded
+                  </span>
+                  {post.media.length > 1 && (
+                    <span className="text-xs text-gray-500">
+                      Showing image {(post.activeIndex || 0) + 1}
+                    </span>
+                  )}
+                </div>
+                <div className="grid grid-cols-4 gap-2">
+                  {post.media.map((m, i) => (
+                    <div
+                      key={i}
+                      className={cx(
+                        "relative rounded-lg overflow-hidden border-2 cursor-pointer transition-all",
+                        i === post.activeIndex 
+                          ? "border-blue-500 ring-2 ring-blue-200" 
+                          : "border-gray-200 hover:border-gray-300"
+                      )}
+                      onClick={() => update({ activeIndex: i })}
+                    >
+                      <img src={m} className="w-full h-12 object-cover" alt="" />
+                      <button
+                        className="absolute -top-1 -right-1 bg-red-500 text-white rounded-full p-0.5 w-5 h-5 flex items-center justify-center text-xs hover:bg-red-600 transition-colors"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          removeImageAt(i);
+                        }}
+                      >
+                        ×
+                      </button>
+                    </div>
+                  ))}
+                </div>
               </div>
             ) : null}
-          </Section>
+          </WorkflowStep>
 
-          {/* Divider */}
-          <div className="border-t border-app-border"></div>
 
-          {/* Link preview Section - UPDATED: Only show for Facebook */}
+          {/* Collapsible Advanced Sections */}
           {post.platform === "facebook" && (
-            <Section title="Link preview (Facebook style)">
+            <CollapsibleSection title="🔗 Link Preview (Facebook)">
               <div className="space-y-3">
                 <input
-                  id="link_headline"
-                  name="link_headline"
-                  className="input"
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
                   placeholder="Headline"
                   value={post.link?.headline || ""}
                   onChange={(e) => update({ link: { ...(post.link || {}), headline: e.target.value } })}
                 />
                 <input
-                  id="link_subhead"
-                  name="link_subhead"
-                  className="input"
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
                   placeholder="Subhead"
                   value={post.link?.subhead || ""}
                   onChange={(e) => update({ link: { ...(post.link || {}), subhead: e.target.value } })}
                 />
-                <div className="flex items-center gap-2">
+                <div className="flex gap-2">
                   <input
-                    id="link_url"
-                    name="link_url"
-                    className="input flex-1"
+                    className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm"
                     placeholder="Link URL"
                     value={post.link?.url || ""}
                     onChange={(e) => update({ link: { ...(post.link || {}), url: e.target.value } })}
-                    autoComplete="url"
                   />
                   <select
-                    id="link_cta"
-                    name="link_cta"
-                    className="select w-auto"
+                    className="border border-gray-300 rounded-lg px-3 py-2 text-sm"
                     value={post.link?.cta || "Learn More"}
                     onChange={(e) => update({ link: { ...(post.link || {}), cta: e.target.value } })}
                   >
-                    {["Learn More", "Shop Now", "Sign Up", "Download", "Book Now", "Contact Us"].map(
-                      (c) => (
-                        <option key={c} value={c}>
-                          {c}
-                        </option>
-                      )
-                    )}
+                    <option value="Learn More">Learn More</option>
+                    <option value="Shop Now">Shop Now</option>
+                    <option value="Sign Up">Sign Up</option>
+                    <option value="Download">Download</option>
                   </select>
                 </div>
               </div>
-            </Section>
+            </CollapsibleSection>
           )}
 
-          {/* Divider - only show if link section was shown */}
-          {post.platform === "facebook" && <div className="border-t border-app-border"></div>}
+          {/* Deck Preview - Always show if items exist */}
+          {deck?.length > 0 && (
+            <WorkflowStep title={`🎬 Your Deck (${deck.length} post${deck.length === 1 ? '' : 's'})`}>
+              <div className="space-y-3">
+                {/* Thumbnail Grid */}
+                <div className="grid grid-cols-3 gap-2">
+                  {deck.slice(0, 6).map((d, index) => (
+                    <div 
+                      key={d.id}
+                      className="relative group cursor-pointer"
+                      onClick={() => loadFromDeck(d.id)}
+                    >
+                      {/* Thumbnail */}
+                      <div className="aspect-square bg-gradient-to-br from-gray-100 to-gray-200 rounded-lg overflow-hidden border border-gray-200 hover:border-blue-300 transition-all">
+                        {d.post?.media?.length > 0 ? (
+                          <img 
+                            src={d.post.media[0]} 
+                            alt="" 
+                            className="w-full h-full object-cover"
+                          />
+                        ) : d.post?.videoSrc ? (
+                          <div className="w-full h-full flex items-center justify-center bg-gray-800">
+                            <VideoIcon className="w-6 h-6 text-white" />
+                          </div>
+                        ) : (
+                          <div className="w-full h-full flex items-center justify-center">
+                            <div className="text-center">
+                              <ImageIcon className="w-4 h-4 mx-auto mb-1 text-gray-400" />
+                              <div className="text-xs text-gray-500 leading-tight">
+                                {d.post?.caption?.slice(0, 20) || 'Text post'}
+                              </div>
+                            </div>
+                          </div>
+                        )}
+                        
+                        {/* Platform Badge */}
+                        <div className="absolute top-1 left-1">
+                          <div className={cx(
+                            "w-4 h-4 rounded-full flex items-center justify-center text-xs font-bold text-white",
+                            d.post?.platform === "facebook" ? "bg-blue-500" : "bg-pink-500"
+                          )}>
+                            {d.post?.platform === "facebook" ? "f" : "📷"}
+                          </div>
+                        </div>
 
-          {/* Deck Section */}
-          <Section title="Deck (multiple posts)">
-            <div className="flex items-center gap-2 flex-wrap">
-              <button className="btn" onClick={() => openDeckPicker?.()}>
-                <ImageIcon className="w-4 h-4 mr-2" />
-                Add this post to deck
-              </button>
-              <button
-                className="btn-outline"
-                title="Quick save with title prompt"
-                onClick={() => saveToDeck?.()}
-              >
-                Quick save
-              </button>
-              {deck.length > 0 && (
-                <button
-                  className="btn-outline"
-                  onClick={() => startPresentingDeck(deck[0]?.id)}
-                  disabled={!deck.length}
-                >
-                  <Film className="w-4 h-4 mr-2" />
-                  Present deck
-                </button>
-              )}
-            </div>
+                        {/* Index Number */}
+                        <div className="absolute top-1 right-1 bg-black/70 text-white text-xs rounded-full w-4 h-4 flex items-center justify-center">
+                          {index + 1}
+                        </div>
 
-            {deck.length > 0 && (
-              <div className="space-y-2 max-h-56 overflow-auto pr-1">
-                {deck.map((d) => (
-                  <div
-                    key={d.id}
-                    className="flex items-center justify-between border border-app-border rounded-lg p-3 hover:bg-slate-50 transition-colors"
+                        {/* Hover Actions */}
+                        <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                          <div className="flex gap-1">
+                            <button 
+                              className="bg-white/90 hover:bg-white text-gray-700 rounded-full p-1.5 transition-colors"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                loadFromDeck(d.id);
+                              }}
+                              title="Load this post"
+                            >
+                              <Eye className="w-3 h-3" />
+                            </button>
+                            <button 
+                              className="bg-white/90 hover:bg-white text-gray-700 rounded-full p-1.5 transition-colors"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                duplicateToDeck?.(d.id);
+                              }}
+                              title="Duplicate"
+                            >
+                              <Copy className="w-3 h-3" />
+                            </button>
+                            <button 
+                              className="bg-red-500/90 hover:bg-red-500 text-white rounded-full p-1.5 transition-colors"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                deleteFromDeck(d.id);
+                              }}
+                              title="Delete"
+                            >
+                              <Trash2 className="w-3 h-3" />
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                      
+                      {/* Post Info */}
+                      <div className="mt-1 text-xs text-gray-600">
+                        <div className="truncate">
+                          {d.post?.brand?.name || 'Untitled'}
+                        </div>
+                        <div className="text-gray-400">
+                          {new Date(d.createdAt).toLocaleDateString()}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                  
+                  {/* Show More Indicator */}
+                  {deck.length > 6 && (
+                    <div className="aspect-square bg-gray-100 rounded-lg border-2 border-dashed border-gray-300 flex items-center justify-center">
+                      <div className="text-center">
+                        <div className="text-lg font-bold text-gray-400">+{deck.length - 6}</div>
+                        <div className="text-xs text-gray-500">more</div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Quick Actions */}
+                <div className="flex gap-2 pt-2 border-t border-gray-200">
+                  <button
+                    onClick={() => startPresentingDeck?.()}
+                    className="flex items-center gap-2 px-3 py-2 bg-green-500 text-white rounded-lg text-sm font-medium hover:bg-green-600 transition-colors flex-1 justify-center"
                   >
-                    <div className="text-sm min-w-0">
-                      <div className="font-medium text-app-strong truncate">
-                        {new Date(d.createdAt).toLocaleString()}
-                      </div>
-                      <div className="text-xs text-app-muted truncate">
-                        {(d.post?.brand?.name || "Brand")} · {d.post?.platform || "facebook"} ·{" "}
-                        {d.post?.type || "single"}
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-1 flex-shrink-0">
-                      <button className="chip text-xs" onClick={() => loadFromDeck(d.id)}>
-                        <Eye className="w-3 h-3 mr-1" />
-                        Load
-                      </button>
-                      <button className="chip text-xs" onClick={() => duplicateToDeck(d.id)}>
-                        <Copy className="w-3 h-3 mr-1" />
-                        Duplicate
-                      </button>
-                      <button className="chip text-xs" onClick={() => startPresentingDeck(d.id)}>
-                        <Film className="w-3 h-3 mr-1" />
-                        Start here
-                      </button>
-                      <button className="chip text-xs hover:bg-red-50 hover:text-red-600 transition-colors" onClick={() => deleteFromDeck(d.id)}>
-                        <Trash2 className="w-3 h-3 mr-1" />
-                        Remove
-                      </button>
-                    </div>
-                  </div>
-                ))}
+                    <Play className="w-4 h-4" />
+                    Present Deck
+                  </button>
+                  <button
+                    onClick={() => addToDeck?.()}
+                    className="px-3 py-2 border border-gray-300 rounded-lg text-sm font-medium hover:bg-gray-50 transition-colors"
+                    title="Add current post to this deck"
+                  >
+                    <Save className="w-4 h-4" />
+                  </button>
+                </div>
               </div>
-            )}
-          </Section>
+            </WorkflowStep>
+          )}
+
+          {/* Collapsible Advanced Sections */}
         </div>
       </div>
+
+      {/* Step 3: Actions (Sticky bottom bar) */}
+      <ActionsBar />
     </div>
   );
 });
