@@ -1,16 +1,25 @@
-// Single source of truth for the post shape used across the app.
+import { useMemo } from 'react';
 
+// Constants
 export const CTA_OPTIONS = ["Learn More","Shop Now","Sign Up","Download","Book Now","Contact Us"];
+export const VALID_PLATFORMS = ["facebook", "instagram"];
+export const VALID_TYPES = ["single", "carousel", "video"];
+export const VALID_ASPECT_RATIOS = ["1:1", "4:5", "9:16", "16:9", "1.91:1"];
 
-// note: now includes id
-export const emptyBrand = { id: null, name: "Your Brand", username: "yourbrand", profileSrc: "", verified: false };
-export const emptyLink = { headline: "", subhead: "", url: "", cta: CTA_OPTIONS[0] };
-export const emptyMetrics = { likes: 128, comments: 24, shares: 12, saves: 9, views: 10234 };
+// Default objects (frozen for performance)
+export const emptyBrand = Object.freeze({ 
+  id: null, name: "Your Brand", username: "yourbrand", profileSrc: "", verified: false 
+});
+export const emptyLink = Object.freeze({ 
+  headline: "", subhead: "", url: "", cta: CTA_OPTIONS[0] 
+});
+export const emptyMetrics = Object.freeze({ 
+  likes: 128, comments: 24, shares: 12, saves: 9, views: 10234 
+});
 
-// one entry per image
-const emptyMediaMetaEntry = { headline: "" };
+const emptyMediaMetaEntry = Object.freeze({ headline: "" });
 
-export const emptyPost = {
+export const emptyPost = Object.freeze({
   id: null,
   platform: "facebook",      // "facebook" | "instagram"
   type: "single",            // "single" | "carousel" | "video"
@@ -31,106 +40,137 @@ export const emptyPost = {
   brand: { ...emptyBrand },
   metrics: { ...emptyMetrics },
   brandId: null,             // selected Supabase brand row id
-};
+});
 
-// Ensure any incoming object conforms to the expected shape
-export function ensurePostShape(p) {
-  const base = { ...emptyPost };
-  const src = p && typeof p === "object" ? p : {};
-  
-  base.id = src.id ?? base.id;
-  base.platform = src.platform === "instagram" ? "instagram" : "facebook";
+// Validation helpers
+const isValidString = (val) => typeof val === 'string';
+const isValidArray = (val) => Array.isArray(val);
+const isValidObject = (val) => val && typeof val === 'object';
+const isValidNumber = (val) => Number.isFinite(val);
 
-  // Respect explicit type if valid. Do not override later.
-  const validTypes = ["single","carousel","video"];
-  base.type = validTypes.includes(src.type) ? src.type : null;
+// Fast validation check
+function isValidPost(post) {
+  return post && 
+    typeof post === 'object' && 
+    VALID_PLATFORMS.includes(post.platform) &&
+    VALID_TYPES.includes(post.type) &&
+    isValidArray(post.media) &&
+    isValidString(post.caption);
+}
 
-  base.isReel = !!src.isReel;
-  base.caption = typeof src.caption === "string" ? src.caption : base.caption;
+// Helper functions for normalization
+function normalizeMedia(media) {
+  return isValidArray(media) ? media.filter(Boolean).slice(0, 5) : [];
+}
 
-  // media
-  const incomingMedia = Array.isArray(src.media) ? src.media.filter(Boolean).slice(0, 5) : [];
-  base.media = incomingMedia;
+function normalizeMediaMeta(mediaMeta, mediaLength) {
+  const srcMeta = isValidArray(mediaMeta) ? mediaMeta : [];
+  return Array.from({ length: mediaLength }, (_, i) => ({
+    headline: isValidString(srcMeta[i]?.headline) ? srcMeta[i].headline : ""
+  }));
+}
 
-  // mediaMeta — normalize to same length as media
-  const srcMeta = Array.isArray(src.mediaMeta) ? src.mediaMeta : [];
-  const normalizedMeta = [];
-  for (let i = 0; i < base.media.length; i++) {
-    const m = srcMeta[i] && typeof srcMeta[i] === "object" ? srcMeta[i] : {};
-    normalizedMeta[i] = {
-      headline: typeof m.headline === "string" ? m.headline : "",
-    };
-  }
-  base.mediaMeta = normalizedMeta;
-
-  base.videoSrc = typeof src.videoSrc === "string" ? src.videoSrc : "";
-  base.muted = src.muted ?? true;
-  base.playing = src.playing ?? false;
-  base.activeIndex = Number.isFinite(src.activeIndex)
-    ? Math.max(0, Math.min(src.activeIndex, (base.media.length || 1) - 1))
+function normalizeActiveIndex(activeIndex, mediaLength) {
+  return isValidNumber(activeIndex) 
+    ? Math.max(0, Math.min(activeIndex, Math.max(0, mediaLength - 1)))
     : 0;
+}
 
-  // Handle both old fbSquare and new fbAspectRatio for backward compatibility
-  const validAspectRatios = ["1:1", "4:5", "9:16", "16:9", "1.91:1"];
-  if (validAspectRatios.includes(src.fbAspectRatio)) {
-    base.fbAspectRatio = src.fbAspectRatio;
+function normalizeAspectRatio(src) {
+  if (VALID_ASPECT_RATIOS.includes(src.fbAspectRatio)) {
+    return src.fbAspectRatio;
   } else if (src.fbSquare !== undefined) {
     // Migrate old fbSquare to new fbAspectRatio
-    base.fbAspectRatio = src.fbSquare ? "1:1" : "16:9";
-  } else {
-    base.fbAspectRatio = "1:1"; // default
+    return src.fbSquare ? "1:1" : "16:9";
   }
+  return "1:1"; // default
+}
 
-  // Handle new Facebook ad format fields
-  base.fbAdFormat = typeof src.fbAdFormat === "string" ? src.fbAdFormat : "feed-1:1";
-  base.fbAdType = typeof src.fbAdType === "string" ? src.fbAdType : "feed";
-
-  // Handle Instagram ad format fields
-  base.igAdFormat = typeof src.igAdFormat === "string" ? src.igAdFormat : "feed-1:1";
-  base.igAdType = typeof src.igAdType === "string" ? src.igAdType : "feed";
-
-  const link = src.link && typeof src.link === "object" ? src.link : {};
-  base.link = {
-    headline: typeof link.headline === "string" ? link.headline : "",
-    subhead: typeof link.subhead === "string" ? link.subhead : "",
-    url: typeof link.url === "string" ? link.url.trim() : "",
-    cta: CTA_OPTIONS.includes(link.cta) ? link.cta : CTA_OPTIONS[0],
+function normalizeLink(link) {
+  const linkSrc = isValidObject(link) ? link : {};
+  return {
+    headline: isValidString(linkSrc.headline) ? linkSrc.headline : "",
+    subhead: isValidString(linkSrc.subhead) ? linkSrc.subhead : "",
+    url: isValidString(linkSrc.url) ? linkSrc.url.trim() : "",
+    cta: CTA_OPTIONS.includes(linkSrc.cta) ? linkSrc.cta : CTA_OPTIONS[0],
   };
+}
 
-  // brand and brandId: keep both fields present and in sync
-  const brandSrc = src.brand && typeof src.brand === "object" ? src.brand : {};
+function normalizeBrand(brand, brandId) {
+  const brandSrc = isValidObject(brand) ? brand : {};
   const normalizedBrandId =
-    (typeof src.brandId === "string" && src.brandId.length ? src.brandId : null) ??
+    (typeof brandId === "string" && brandId.length ? brandId : null) ??
     (typeof brandSrc.id === "string" && brandSrc.id.length ? brandSrc.id : null);
 
-  base.brand = {
+  return {
     id: (typeof brandSrc.id === "string" && brandSrc.id.length ? brandSrc.id : null) ?? normalizedBrandId,
-    name: typeof brandSrc.name === "string" ? brandSrc.name : emptyBrand.name,
-    username: typeof brandSrc.username === "string" ? brandSrc.username : emptyBrand.username,
-    profileSrc: typeof brandSrc.profileSrc === "string" ? brandSrc.profileSrc : "",
-    verified: !!brandSrc.verified,
+    name: isValidString(brandSrc.name) ? brandSrc.name : emptyBrand.name,
+    username: isValidString(brandSrc.username) ? brandSrc.username : emptyBrand.username,
+    profileSrc: isValidString(brandSrc.profileSrc) ? brandSrc.profileSrc : "",
+    verified: Boolean(brandSrc.verified),
   };
+}
 
-  // Sync brandId after brand
-  base.brandId = normalizedBrandId ?? base.brand.id ?? null;
-
-  const metrics = src.metrics && typeof src.metrics === "object" ? src.metrics : {};
-  base.metrics = {
-    likes: Number.isFinite(metrics.likes) ? metrics.likes : emptyMetrics.likes,
-    comments: Number.isFinite(metrics.comments) ? metrics.comments : emptyMetrics.comments,
-    shares: Number.isFinite(metrics.shares) ? metrics.shares : emptyMetrics.shares,
-    saves: Number.isFinite(metrics.saves) ? metrics.saves : emptyMetrics.saves,
-    views: Number.isFinite(metrics.views) ? metrics.views : emptyMetrics.views,
+function normalizeMetrics(metrics) {
+  const metricsSrc = isValidObject(metrics) ? metrics : {};
+  return {
+    likes: isValidNumber(metricsSrc.likes) ? metricsSrc.likes : emptyMetrics.likes,
+    comments: isValidNumber(metricsSrc.comments) ? metricsSrc.comments : emptyMetrics.comments,
+    shares: isValidNumber(metricsSrc.shares) ? metricsSrc.shares : emptyMetrics.shares,
+    saves: isValidNumber(metricsSrc.saves) ? metricsSrc.saves : emptyMetrics.saves,
+    views: isValidNumber(metricsSrc.views) ? metricsSrc.views : emptyMetrics.views,
   };
+}
 
-  // Infer type only if not explicitly set
-  if (!base.type || !validTypes.includes(base.type)) {
-    base.type = base.videoSrc
-      ? "video"
-      : base.media.length > 1
-      ? "carousel"
+// Optimized shape normalization with early returns
+export function ensurePostShape(p) {
+  // Early return for already valid posts
+  if (isValidPost(p)) return p;
+  
+  const src = p && typeof p === "object" ? p : {};
+  const result = { ...emptyPost };
+
+  // Basic properties
+  result.id = src.id ?? result.id;
+  result.platform = VALID_PLATFORMS.includes(src.platform) ? src.platform : "facebook";
+  result.type = VALID_TYPES.includes(src.type) ? src.type : null;
+  result.isReel = Boolean(src.isReel);
+  result.caption = isValidString(src.caption) ? src.caption : result.caption;
+
+  // Media processing
+  result.media = normalizeMedia(src.media);
+  result.mediaMeta = normalizeMediaMeta(src.mediaMeta, result.media.length);
+
+  // Video properties
+  result.videoSrc = isValidString(src.videoSrc) ? src.videoSrc : "";
+  result.muted = src.muted ?? true;
+  result.playing = src.playing ?? false;
+  result.activeIndex = normalizeActiveIndex(src.activeIndex, result.media.length);
+
+  // Aspect ratios and formats
+  result.fbAspectRatio = normalizeAspectRatio(src);
+  result.fbAdFormat = isValidString(src.fbAdFormat) ? src.fbAdFormat : "feed-1:1";
+  result.fbAdType = isValidString(src.fbAdType) ? src.fbAdType : "feed";
+  result.igAdFormat = isValidString(src.igAdFormat) ? src.igAdFormat : "feed-1:1";
+  result.igAdType = isValidString(src.igAdType) ? src.igAdType : "feed";
+
+  // Complex objects
+  result.link = normalizeLink(src.link);
+  result.brand = normalizeBrand(src.brand, src.brandId);
+  result.brandId = result.brand.id;
+  result.metrics = normalizeMetrics(src.metrics);
+
+  // Infer type if not set
+  if (!result.type) {
+    result.type = result.videoSrc ? "video" 
+      : result.media.length > 1 ? "carousel" 
       : "single";
   }
 
-  return base;
+  return result;
+}
+
+// Hook for memoized post normalization
+export function useNormalizedPost(post) {
+  return useMemo(() => ensurePostShape(post), [post]);
 }

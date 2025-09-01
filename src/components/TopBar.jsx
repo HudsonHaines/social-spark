@@ -1,34 +1,46 @@
 // src/components/TopBar.jsx
-import React from "react";
+import React, { memo, useCallback } from "react";
 import { Image as ImageIcon, FolderOpen, PlusSquare, Menu } from "lucide-react";
 import ProfileButton from "../profile/ProfileButton";
 
-export default function TopBar({
+const TopBar = memo(function TopBar({
   mode = "create",
   setMode = () => {},
   onExportPNG = () => {},
   onOpenMenu = () => {},
-  openDeckManager = null,
-  openDeckPicker = null,
+  deckActions = {},
   user = null,
   // Add these props to handle present mode properly
   canPresent = false,
   onStartPresent = () => {},
   exportDisabled = false,
+  loading = false,
 }) {
-  const handlePresentClick = () => {
+  // Destructure deck operations with defaults
+  const {
+    openDeckManager = () => {},
+    openDeckPicker = () => {},
+    loadingDeck = false,
+  } = deckActions;
+  const handlePresentClick = useCallback(() => {
     if (mode === "present") {
-      // Exit present mode
       setMode("create");
     } else {
-      // Enter present mode - but only if we have posts to present
       if (canPresent) {
         onStartPresent();
       } else {
         alert("No posts to present. Add posts to your deck or open a saved deck first.");
       }
     }
-  };
+  }, [mode, setMode, canPresent, onStartPresent]);
+
+  const handleModeChange = useCallback((newMode) => {
+    if (newMode === "present" && !canPresent) {
+      alert("No posts to present. Add posts to your deck or open a saved deck first.");
+      return;
+    }
+    setMode(newMode);
+  }, [setMode, canPresent]);
 
   return (
     <header className="border-b bg-white h-12">
@@ -49,7 +61,7 @@ export default function TopBar({
           <button
             className="tab"
             aria-selected={mode === "create"}
-            onClick={() => setMode("create")}
+            onClick={() => handleModeChange("create")}
           >
             Create
           </button>
@@ -71,22 +83,24 @@ export default function TopBar({
         <div className="flex items-center gap-2">
           <button
             className="btn-outline hidden sm:inline-flex"
-            onClick={openDeckManager || (() => {})}
-            title="Open Deck Manager"
+            onClick={openDeckManager}
+            disabled={loadingDeck || loading}
+            title={loadingDeck || loading ? "Loading..." : "Open Deck Manager"}
           >
             <FolderOpen className="w-4 h-4 mr-1" />
-            Decks
+            {loadingDeck || loading ? "Loading..." : "Decks"}
           </button>
 
           {/* Only show Save to deck button in create mode */}
           {mode === "create" && (
             <button
               className="btn-outline hidden sm:inline-flex"
-              onClick={openDeckPicker || (() => {})}
-              title="Save current post to a deck"
+              onClick={openDeckPicker}
+              disabled={loadingDeck || loading}
+              title={loadingDeck || loading ? "Loading..." : "Save current post to a deck"}
             >
               <PlusSquare className="w-4 h-4 mr-1" />
-              Save to deck
+              {loadingDeck || loading ? "Loading..." : "Save to deck"}
             </button>
           )}
 
@@ -107,4 +121,6 @@ export default function TopBar({
       </div>
     </header>
   );
-}
+});
+
+export default TopBar;

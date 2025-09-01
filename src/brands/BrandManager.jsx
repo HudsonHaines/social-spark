@@ -1,8 +1,11 @@
 // src/brands/BrandManager.jsx
-import React, { useEffect, useState } from "react";
-import { useBrands, fetchBrands, upsertBrand, deleteBrand } from "../data/brands";
+import React, { useEffect, useState, memo, useCallback } from "react";
+import { useBrands } from "../data/brands";
+import { useBrandForm, validateBrandForm } from "../data/brandShape";
+import BrandFormFields from "../components/BrandFormFields";
+import BrandCard from "../components/BrandCard";
 
-function Banner({ kind = "info", children }) {
+const Banner = memo(function Banner({ kind = "info", children }) {
   const cls =
     kind === "error"
       ? "bg-red-50 text-red-700 border-red-200"
@@ -10,83 +13,84 @@ function Banner({ kind = "info", children }) {
       ? "bg-green-50 text-green-700 border-green-200"
       : "bg-slate-50 text-slate-700 border-slate-200";
   return <div className={`border rounded-lg px-3 py-2 text-sm ${cls}`}>{children}</div>;
-}
+});
 
-function EmptyForm() {
-  return {
-    id: undefined,
-    fb_name: "",
-    fb_avatar_url: "",
-    ig_username: "",
-    ig_avatar_url: "",
-    verified: false,
-  };
-}
-
-export default function BrandManager({ user, open, onClose }) {
+const BrandManager = memo(function BrandManager({ user, open, onClose }) {
   const userId = user?.id || null;
   if (!open || !userId) return null;
 
   const { brands, saveBrand, removeBrand, saving, error: hookError } = useBrands(userId);
+  const {
+    form,
+    errors,
+    touched,
+    isValid,
+    resetForm,
+    updateField,
+    touchField,
+    validateForm,
+    getFormData,
+  } = useBrandForm();
 
-  const [form, setForm] = useState(EmptyForm());
-  const [error, setError] = useState("");
+  const [localError, setLocalError] = useState("");
   const [success, setSuccess] = useState("");
   const isEdit = !!form.id;
 
   useEffect(() => {
     if (!open) {
-      setForm(EmptyForm());
-      setError("");
+      resetForm();
+      setLocalError("");
       setSuccess("");
     }
-  }, [open]);
+  }, [open, resetForm]);
 
-  function resetForm() {
-    setForm(EmptyForm());
-    setError("");
+  const clearMessages = useCallback(() => {
+    setLocalError("");
     setSuccess("");
-  }
+  }, []);
 
-  function loadForEdit(b) {
-    setForm({
-      id: b.id,
-      fb_name: b.fb_name || "",
-      fb_avatar_url: b.fb_avatar_url || "",
-      ig_username: b.ig_username || "",
-      ig_avatar_url: b.ig_avatar_url || "",
-      verified: !!b.verified,
-    });
-    setError("");
-    setSuccess("");
-  }
+  const resetFormAndMessages = useCallback(() => {
+    resetForm();
+    clearMessages();
+  }, [resetForm, clearMessages]);
 
-  async function handleSubmit(e) {
+  const loadForEdit = useCallback((brand) => {
+    resetForm({ ...brand, id: brand.id });
+    clearMessages();
+  }, [resetForm, clearMessages]);
+
+  const handleSubmit = useCallback(async (e) => {
     e.preventDefault();
-    setError("");
-    setSuccess("");
+    clearMessages();
 
     if (!userId) {
-      setError("You must be signed in.");
+      setLocalError("You must be signed in.");
       return;
     }
-    if (!form.fb_name.trim() && !form.ig_username.trim()) {
-      setError("Add a Facebook name or an Instagram username.");
+
+    const validation = validateForm();
+    if (!validation.isValid) {
+      setLocalError("Please fix the errors above.");
       return;
     }
 
     try {
-      const saved = await saveBrand(form);
+      const formData = getFormData();
+      const dataToSave = isEdit ? { ...formData, id: form.id } : formData;
+      
+      const saved = await saveBrand(dataToSave);
       setSuccess(isEdit ? "Brand updated." : "Brand created.");
-      setForm((f) => ({ ...f, id: saved?.id })); // keep in edit mode
-    } catch (e2) {
-      setError(e2?.message || "Failed to save brand.");
+      
+      // Keep in edit mode with the saved data
+      resetForm({ ...saved });
+    } catch (error) {
+      console.error('Save error:', error);
+      setLocalError(error?.message || "Failed to save brand.");
     }
-  }
+  }, [userId, validateForm, getFormData, isEdit, form.id, saveBrand, clearMessages, resetForm]);
 
-  async function handleDelete(id) {
-    setError("");
-    setSuccess("");
+  const handleDelete = useCallback(async (id) => {
+    clearMessages();
     if (!id) return;
 
     const ok = confirm("Delete this brand? This cannot be undone.");
@@ -94,12 +98,13 @@ export default function BrandManager({ user, open, onClose }) {
 
     try {
       await removeBrand(id);
-      if (form.id === id) resetForm();
+      if (form.id === id) resetFormAndMessages();
       setSuccess("Brand deleted.");
-    } catch (e2) {
-      setError(e2?.message || "Failed to delete brand.");
+    } catch (error) {
+      console.error('Delete error:', error);
+      setLocalError(error?.message || "Failed to delete brand.");
     }
-  }
+  }, [removeBrand, form.id, resetFormAndMessages, clearMessages]);
 
   return (
     <div className="fixed inset-0 z-50">
@@ -142,83 +147,27 @@ export default function BrandManager({ user, open, onClose }) {
             </div>
 
             {hookError ? <Banner kind="error">{hookError}</Banner> : null}
-            {error ? <Banner kind="error">{error}</Banner> : null}
+            {localError ? <Banner kind="error">{localError}</Banner> : null}
             {success ? <Banner kind="success">{success}</Banner> : null}
 
-            <div>
-              <label className="text-xs text-slate-500" htmlFor="bm_fb_name">Facebook page name</label>
-              <input
-                id="bm_fb_name"
-                className="input"
-                placeholder="e.g. Patagonia"
-                value={form.fb_name}
-                onChange={(e) => setForm((f) => ({ ...f, fb_name: e.target.value }))}
-              />
-            </div>
-
-            <div>
-              <label className="text-xs text-slate-500" htmlFor="bm_fb_avatar">Facebook avatar URL</label>
-              <input
-                id="bm_fb_avatar"
-                className="input"
-                placeholder="https://..."
-                value={form.fb_avatar_url}
-                onChange={(e) => setForm((f) => ({ ...f, fb_avatar_url: e.target.value }))}
-              />
-            </div>
-
-            <div>
-              <label className="text-xs text-slate-500" htmlFor="bm_ig_username">Instagram username</label>
-              <input
-                id="bm_ig_username"
-                className="input"
-                placeholder="e.g. patagonia"
-                value={form.ig_username}
-                onChange={(e) => setForm((f) => ({ ...f, ig_username: e.target.value }))}
-              />
-            </div>
-
-            <div>
-              <label className="text-xs text-slate-500" htmlFor="bm_ig_avatar">Instagram avatar URL</label>
-              <input
-                id="bm_ig_avatar"
-                className="input"
-                placeholder="https://..."
-                value={form.ig_avatar_url}
-                onChange={(e) => setForm((f) => ({ ...f, ig_avatar_url: e.target.value }))}
-              />
-            </div>
-
-            <label className="flex items-center gap-2 text-sm">
-              <input
-                type="checkbox"
-                checked={form.verified}
-                onChange={(e) => setForm((f) => ({ ...f, verified: e.target.checked }))}
-              />
-              Verified
-            </label>
-
-            {/* Tiny preview row */}
-            <div className="flex items-center gap-3 pt-1">
-              <div className="w-8 h-8 rounded-full overflow-hidden bg-slate-200">
-                {form.fb_avatar_url ? (
-                  <img src={form.fb_avatar_url} className="w-full h-full object-cover" />
-                ) : null}
-              </div>
-              <div className="text-sm truncate">
-                <div className="font-medium truncate">{form.fb_name || "Facebook name"}</div>
-                <div className="text-xs text-slate-500 truncate">@{form.ig_username || "instagram"}</div>
-              </div>
-            </div>
+            <BrandFormFields
+              form={form}
+              errors={errors}
+              touched={touched}
+              onFieldChange={updateField}
+              onFieldBlur={touchField}
+              disabled={saving}
+              showPreview={true}
+            />
 
             <div className="flex items-center gap-2 pt-1">
-              <button type="submit" className="btn" disabled={saving}>
-                {isEdit ? "Save changes" : "Save brand"}
+              <button type="submit" className="btn" disabled={saving || !isValid}>
+                {saving ? 'Saving...' : (isEdit ? "Save changes" : "Save brand")}
               </button>
-              <button type="button" className="btn-outline" onClick={resetForm} disabled={saving}>
+              <button type="button" className="btn-outline" onClick={resetFormAndMessages} disabled={saving}>
                 {isEdit ? "Cancel" : "Clear"}
               </button>
-              {isEdit ? (
+              {isEdit && form.id ? (
                 <button
                   type="button"
                   className="btn-outline text-red-600 border-red-200 ml-auto"
@@ -232,66 +181,52 @@ export default function BrandManager({ user, open, onClose }) {
           </form>
 
           {/* List brands */}
-          {/* List brands */}
-<div className="space-y-3">
-  <div className="text-sm font-medium">Your brands</div>
+          <div className="space-y-3">
+            <div className="text-sm font-medium">Your brands</div>
 
-  {brands.length === 0 ? (
-    <div className="border rounded-xl p-4 text-sm text-slate-500">
-      No brands yet
-    </div>
-  ) : (
-    <ul className="space-y-2">
-      {brands.map((b) => (
-        <li key={b.id} className="border rounded-xl p-3 bg-white">
-          <div className="flex items-start gap-3">
-            <div className="w-8 h-8 rounded-full overflow-hidden bg-slate-200 shrink-0">
-              {b.fb_avatar_url ? (
-                <img src={b.fb_avatar_url} className="w-full h-full object-cover" />
-              ) : null}
-            </div>
-
-            <div className="min-w-0 flex-1">
-              <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                <div className="font-medium truncate">{b.fb_name || "Facebook name"}</div>
-                <div className="text-xs text-slate-500 truncate">@{b.ig_username || "instagram"}</div>
-                {b.verified ? (
-                  <span className="chip">✓ Verified</span>
-                ) : null}
+            {brands.length === 0 ? (
+              <div className="border rounded-xl p-4 text-sm text-slate-500">
+                No brands yet
               </div>
+            ) : (
+              <ul className="space-y-2">
+                {brands.map((brand) => (
+                  <li key={brand.id}>
+                    <BrandCard
+                      brand={brand}
+                      onEdit={(id, formData) => saveBrand({ ...formData, id })}
+                      onDelete={handleDelete}
+                      showActions={true}
+                      showVerifiedToggle={false}
+                      showInlineEdit={false}
+                      compact={true}
+                      disabled={saving}
+                      className="hover:bg-slate-50"
+                    />
+                    {/* Edit action */}
+                    <div className="mt-2 flex justify-end">
+                      <button
+                        type="button"
+                        className="chip"
+                        onClick={() => loadForEdit(brand)}
+                        disabled={saving}
+                      >
+                        Edit in form above
+                      </button>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
 
-              {/* Actions */}
-              <div className="mt-2 flex flex-wrap items-center gap-2">
-                <button
-                  type="button"
-                  className="chip"
-                  onClick={() => loadForEdit(b)}
-                  disabled={saving}
-                >
-                  Edit
-                </button>
-                <button
-                  type="button"
-                  className="chip text-red-600"
-                  onClick={() => handleDelete(b.id)}
-                  disabled={saving}
-                >
-                  Delete
-                </button>
-              </div>
+            <div className="text-xs text-slate-500">
+              Tip: Editing a brand here does not auto-update existing posts. Reselect the brand on a post to refresh its info.
             </div>
           </div>
-        </li>
-      ))}
-    </ul>
-  )}
-
-  <div className="text-xs text-slate-500">
-    Tip: Editing a brand here does not auto-update existing posts. Reselect the brand on a post to refresh its info.
-  </div>
-</div>
         </div>
       </div>
     </div>
   );
-}
+});
+
+export default BrandManager;

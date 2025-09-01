@@ -1,10 +1,10 @@
 // src/components/EditorPresentMode.jsx
-import React, { useEffect, useMemo, useState, useCallback } from "react";
+import React, { useEffect, useMemo, useState, useCallback, memo } from "react";
 import RightPreview from "./RightPreview";
-import { ensurePostShape } from "../data/postShape";
+import { useNormalizedPost } from "../data/postShape";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 
-export default function EditorPresentMode({
+const EditorPresentMode = memo(function EditorPresentMode({
   posts = [], // array of posts to present
   initialIndex = 0,
   onClose,
@@ -12,29 +12,46 @@ export default function EditorPresentMode({
 }) {
   const [currentIndex, setCurrentIndex] = useState(initialIndex);
 
+  // Memoize current post with our optimized hook
   const currentPost = useMemo(
-    () => (posts[currentIndex] ? ensurePostShape(posts[currentIndex]) : ensurePostShape({})),
+    () => posts[Math.min(currentIndex, posts.length - 1)] || {},
     [posts, currentIndex]
   );
+  
+  const normalizedPost = useNormalizedPost(currentPost);
+
+  // Memoize platform display logic
+  const platformInfo = useMemo(() => {
+    const platform = normalizedPost.platform || 'facebook';
+    return {
+      platform,
+      display: platform === 'instagram' ? 'Instagram' : 'Facebook',
+      colorClass: platform === 'instagram' 
+        ? 'bg-gradient-to-r from-purple-500 via-pink-500 to-orange-400' 
+        : 'bg-blue-600'
+    };
+  }, [normalizedPost.platform]);
 
   const goPrev = useCallback(() => {
-    setCurrentIndex((i) => (posts.length ? (i - 1 + posts.length) % posts.length : 0));
+    setCurrentIndex((i) => posts.length > 0 ? (i - 1 + posts.length) % posts.length : 0);
   }, [posts.length]);
 
   const goNext = useCallback(() => {
-    setCurrentIndex((i) => (posts.length ? (i + 1) % posts.length : 0));
+    setCurrentIndex((i) => posts.length > 0 ? (i + 1) % posts.length : 0);
   }, [posts.length]);
 
-  // Arrow key navigation
+  // Optimized keyboard navigation
   useEffect(() => {
-    const onKey = (e) => {
-      if (!posts.length) return;
+    if (!posts.length) return;
+    
+    const handleKeyDown = (e) => {
       if (e.key === "ArrowLeft") goPrev();
       if (e.key === "ArrowRight") goNext();
       if (e.key === "Escape" && onClose) onClose();
     };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+    
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
   }, [posts.length, goPrev, goNext, onClose]);
 
   if (!posts.length) {
@@ -52,12 +69,6 @@ export default function EditorPresentMode({
     );
   }
 
-  // Get platform display info
-  const platform = currentPost.platform || 'facebook';
-  const platformDisplay = platform === 'instagram' ? 'Instagram' : 'Facebook';
-  const platformColor = platform === 'instagram' 
-    ? 'bg-gradient-to-r from-purple-500 via-pink-500 to-orange-400' 
-    : 'bg-blue-600';
 
   return (
     <div className="h-full flex flex-col items-center justify-center bg-app-surface p-4">
@@ -71,8 +82,8 @@ export default function EditorPresentMode({
       {/* Platform tag */}
       {showPlatformTags && (
         <div className="mb-4">
-          <span className={`inline-block px-3 py-1 rounded-full text-white text-xs font-medium ${platformColor}`}>
-            {platformDisplay}
+          <span className={`inline-block px-3 py-1 rounded-full text-white text-xs font-medium ${platformInfo.colorClass}`}>
+            {platformInfo.display}
           </span>
         </div>
       )}
@@ -81,7 +92,7 @@ export default function EditorPresentMode({
       <div className="flex-1 flex items-center justify-center w-full max-w-none overflow-hidden px-4">
         <div className="w-full h-full flex items-center justify-center">
           <RightPreview
-            post={currentPost}
+            post={normalizedPost}
             setPost={() => {}} // Read-only in present mode
             mode="present"
             clamp={null} // Let RightPreview handle dynamic sizing
@@ -122,4 +133,6 @@ export default function EditorPresentMode({
       )}
     </div>
   );
-}
+});
+
+export default EditorPresentMode;

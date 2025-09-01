@@ -15,7 +15,7 @@ import { supabase } from "./lib/supabaseClient";
 if (import.meta.env.DEV) window.supabase = supabase;
 
 // Simple client router: handles /s/:token and default app
-function useRoute() {
+const useRoute = () => {
   const [path, setPath] = useState(() => window.location.pathname);
 
   useEffect(() => {
@@ -24,14 +24,13 @@ function useRoute() {
     return () => window.removeEventListener("popstate", onPop);
   }, []);
 
-  // match /s/<token> (no extra slashes)
   const shareToken = useMemo(() => {
-    const m = path.match(/^\/s\/([^/]+)\/?$/);
-    return m ? decodeURIComponent(m[1]) : null;
+    const match = path.match(/^\/s\/([^/]+)\/?$/);
+    return match ? decodeURIComponent(match[1]) : null;
   }, [path]);
 
   return { shareToken };
-}
+};
 
 function Router() {
   const { shareToken } = useRoute();

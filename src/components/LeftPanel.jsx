@@ -1,5 +1,5 @@
 // src/components/LeftPanel.jsx
-import React, { useRef, useMemo } from "react";
+import React, { useRef, useMemo, memo, useCallback } from "react";
 import {
   Settings2,
   Image as ImageIcon,
@@ -86,7 +86,7 @@ function PlatformSelector({ platform, setPlatform }) {
   );
 }
 
-export default function LeftPanel(props) {
+const LeftPanel = memo(function LeftPanel(props) {
   const {
     // editor
     user,
@@ -97,20 +97,24 @@ export default function LeftPanel(props) {
     handleVideoFile,
     clearVideo,
     removeImageAt,
-    // deck (local)
-    addToDeck,
-    duplicateToDeck,
-    deck,
-    loadFromDeck,
-    deleteFromDeck,
-    startPresentingDeck,
-    loadingDeck,
+    // deck operations consolidated
+    deckActions = {},
     // brand manager
     openBrandManager,
-    // save helpers
-    saveToDeck,
-    openDeckPicker,
   } = props;
+
+  // Destructure deck operations with defaults
+  const {
+    deck = [],
+    loadFromDeck = () => {},
+    deleteFromDeck = () => {},
+    duplicateToDeck = () => {},
+    startPresentingDeck = () => {},
+    saveToDeck = () => {},
+    openDeckPicker = () => {},
+    addToDeck = () => {},
+    loadingDeck = false,
+  } = deckActions;
 
   if (!post) return null;
 
@@ -131,7 +135,7 @@ export default function LeftPanel(props) {
     [brandRows, safeBrandId]
   );
 
-  function syncPostBrandFromRow(row) {
+  const syncPostBrandFromRow = useCallback((row) => {
     if (!row) {
       update({
         brandId: null,
@@ -152,12 +156,12 @@ export default function LeftPanel(props) {
         verified: !!row.verified,
       },
     });
-  }
+  }, [post.platform, update]);
 
-  function handlePickBrand(idOrNull) {
+  const handlePickBrand = useCallback((idOrNull) => {
     const row = brandRows.find((r) => r.id === idOrNull) || null;
     syncPostBrandFromRow(row);
-  }
+  }, [brandRows, syncPostBrandFromRow]);
 
   return (
     <div className="panel overflow-hidden flex flex-col h-full">
@@ -177,8 +181,7 @@ export default function LeftPanel(props) {
           <Section title="Platform">
             <PlatformSelector 
               platform={post.platform || "facebook"} 
-              setPlatform={(p) => update({ platform: p })}
-              currentPost={post}
+              setPlatform={useCallback((p) => update({ platform: p }), [update])}
             />
           </Section>
 
@@ -645,4 +648,6 @@ export default function LeftPanel(props) {
       </div>
     </div>
   );
-}
+});
+
+export default LeftPanel;

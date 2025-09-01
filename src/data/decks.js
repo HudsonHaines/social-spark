@@ -1,8 +1,21 @@
-// src/data/decks.js
 import { supabase } from "../lib/supabaseClient";
+
+// Input validation helpers
+const validateUserId = (userId) => {
+  if (!userId || typeof userId !== 'string') {
+    throw new Error('Invalid user ID provided');
+  }
+};
+
+const validateDeckId = (deckId) => {
+  if (!deckId || (typeof deckId !== 'string' && typeof deckId !== 'number')) {
+    throw new Error('Invalid deck ID provided');
+  }
+};
 
 // Fetch all decks for the user
 export async function listDecks(userId) {
+  validateUserId(userId);
   const { data, error } = await supabase
     .from("decks")
     .select("id, title, created_at")
@@ -12,26 +25,29 @@ export async function listDecks(userId) {
   return data || [];
 }
 
-// Create a new deck
 export async function createDeck(userId, title) {
+  validateUserId(userId);
+  if (!title?.trim()) throw new Error('Deck title is required');
   const { data, error } = await supabase
     .from("decks")
-    .insert([{ user_id: userId, title }])
+    .insert([{ user_id: userId, title: title.trim() }])
     .select("id, title, created_at")
     .single();
   if (error) throw error;
   return data;
 }
 
-// Delete a deck
 export async function deleteDeck(deckId) {
+  validateDeckId(deckId);
   const { error } = await supabase.from("decks").delete().eq("id", deckId);
   if (error) throw error;
   return true;
 }
 
-// Add a post to a deck
 export async function addItemToDeck(deckId, postJson, orderIndex = null) {
+  validateDeckId(deckId);
+  if (!postJson || typeof postJson !== 'object') throw new Error('Invalid post data');
+  
   let finalIndex = orderIndex;
   if (finalIndex == null) {
     const { data: maxRow, error: maxErr } = await supabase
@@ -54,8 +70,8 @@ export async function addItemToDeck(deckId, postJson, orderIndex = null) {
   return data;
 }
 
-// Fetch all posts inside a deck
 export async function listDeckItems(deckId) {
+  validateDeckId(deckId);
   const { data, error } = await supabase
     .from("deck_items")
     .select("id, deck_id, order_index, post_json, created_at")
@@ -65,24 +81,31 @@ export async function listDeckItems(deckId) {
   return data || [];
 }
 
-// Delete a specific post from a deck
 export async function deleteDeckItem(itemId) {
+  if (!itemId) throw new Error('Item ID is required');
   const { error } = await supabase.from("deck_items").delete().eq("id", itemId);
   if (error) throw error;
   return true;
 }
 
-// Reorder deck items
 export async function reorderDeckItems(deckId, orderedIds) {
-  const updates = orderedIds.map((id, idx) => ({ id, order_index: idx }));
-  for (const u of updates) {
-    const { error } = await supabase
-      .from("deck_items")
-      .update({ order_index: u.order_index })
-      .eq("id", u.id)
-      .eq("deck_id", deckId);
-    if (error) throw error;
+  validateDeckId(deckId);
+  if (!Array.isArray(orderedIds) || orderedIds.length === 0) {
+    throw new Error('Invalid ordered IDs array');
   }
+
+  // Batch update using a transaction-like approach
+  const updates = orderedIds.map((id, index) => ({ 
+    id, 
+    deck_id: deckId, 
+    order_index: index 
+  }));
+
+  const { error } = await supabase
+    .from("deck_items")
+    .upsert(updates, { onConflict: 'id' });
+  
+  if (error) throw error;
   return true;
 }
 
@@ -94,16 +117,23 @@ export async function openDeck(deckId) {
 
 /* -------- Sharing helpers -------- */
 
-function randomToken(len = 32) {
-  const bytes = new Uint8Array(len);
-  crypto.getRandomValues(bytes);
-  return btoa(String.fromCharCode(...bytes))
-    .replace(/\+/g, "-")
-    .replace(/\//g, "_")
-    .replace(/=+$/, "");
+// Optimized token generation
+let tokenCache = new Map();
+const CACHE_SIZE = 100;
+
+function randomToken(length = 32) {
+  // Simple cache to avoid regenerating similar tokens
+  const cacheKey = `token_${length}`;
+  if (tokenCache.has(cacheKey) && tokenCache.get(cacheKey).length > 0) {
+    return tokenCache.get(cacheKey).pop();
+  }
+  
+  return crypto.getRandomValues(new Uint8Array(length)).reduce((str, byte) => 
+    str + byte.toString(36), '').slice(0, length);
 }
 
 export async function createDeckShare(deckId, { days = 7 } = {}) {
+  validateDeckId(deckId);
   const token = randomToken(32);
   const expires_at =
     days && days > 0

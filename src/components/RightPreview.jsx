@@ -18,16 +18,16 @@ const RightPreview = forwardRef(function RightPreview(
   },
   previewRef
 ) {
-  const p = useMemo(() => ensurePostShape(post || {}), [post]);
-  const total = p.media?.length || 0;
-  const idx = p.activeIndex || 0;
+  const normalizedPost = useMemo(() => ensurePostShape(post || {}), [post]);
+  const mediaCount = normalizedPost.media?.length || 0;
+  const currentIndex = normalizedPost.activeIndex || 0;
 
   // Determine aspect ratio class based on platform and settings
-  const aspectRatio = p.platform === "instagram" 
-    ? (p.igAdFormat ? p.igAdFormat.split('-')[1] : "1:1") // Extract ratio from igAdFormat
-    : (p.fbAspectRatio || "1:1"); // Facebook uses fbAspectRatio
+  const aspectRatio = normalizedPost.platform === "instagram" 
+    ? (normalizedPost.igAdFormat ? normalizedPost.igAdFormat.split('-')[1] : "1:1")
+    : (normalizedPost.fbAspectRatio || "1:1");
 
-  const getAspectClass = (ratio) => {
+  const getAspectClass = useMemo(() => (ratio) => {
     switch (ratio) {
       case "1:1": return "aspect-square";
       case "4:5": return "aspect-[4/5]";
@@ -36,17 +36,16 @@ const RightPreview = forwardRef(function RightPreview(
       case "1.91:1": return "aspect-[1.91/1]";
       default: return "aspect-square";
     }
-  };
+  }, []);
 
   const aspectClass = getAspectClass(aspectRatio);
 
   // Enhanced dynamic sizing based on aspect ratio and viewport
-  const getDynamicSizing = () => {
+  const dynamicSizing = useMemo(() => {
     const isPortrait = aspectRatio === "9:16" || aspectRatio === "4:5";
     const isLandscape = aspectRatio === "16:9" || aspectRatio === "1.91:1";
 
     if (mode === "present") {
-      // Present mode: be more generous with sizing
       if (isPortrait) {
         return { maxWidth: "min(400px, 85vw)", maxHeight: "85vh" };
       } else if (isLandscape) {
@@ -55,7 +54,6 @@ const RightPreview = forwardRef(function RightPreview(
         return { maxWidth: "min(500px, 85vw)", maxHeight: "85vh" };
       }
     } else {
-      // Create mode: more conservative sizing
       if (isPortrait) {
         return { maxWidth: "min(320px, 75vw)", maxHeight: "75vh" };
       } else if (isLandscape) {
@@ -64,12 +62,11 @@ const RightPreview = forwardRef(function RightPreview(
         return { maxWidth: "min(400px, 80vw)", maxHeight: "75vh" };
       }
     }
-  };
+  }, [aspectRatio, mode]);
 
-  const dynamicStyle = getDynamicSizing();
-  const wrapperStyle = clamp ? 
+  const wrapperStyle = useMemo(() => clamp ? 
     { width: "100%", maxWidth: `min(${clamp.maxPx || 560}px, ${clamp.maxVmin || 80}vmin)` } : 
-    { width: "100%", ...dynamicStyle };
+    { width: "100%", ...dynamicSizing }, [clamp, dynamicSizing]);
 
   // Export stability hook
   const {
@@ -84,60 +81,50 @@ const RightPreview = forwardRef(function RightPreview(
     attachNode: null,
   };
 
-  // Keep activeIndex in range when media changes
+  // Keep currentIndex in range when media changes
   useEffect(() => {
-    const count = p.media?.length || 0;
-    if (idx > Math.max(0, count - 1)) {
+    if (currentIndex > Math.max(0, mediaCount - 1)) {
       setPost((prev) => ({
         ...ensurePostShape(prev),
-        activeIndex: Math.max(0, count - 1),
+        activeIndex: Math.max(0, mediaCount - 1),
       }));
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [p.media?.length]);
+  }, [currentIndex, mediaCount, setPost]);
 
-  // Carousel controls
-  const goPrev = useCallback(() => {
+  // Consolidated carousel navigation
+  const navigateCarousel = useCallback((direction) => {
     setPost((prev) => {
-      const cur = ensurePostShape(prev);
-      const t = cur.media?.length || 0;
-      if (t < 2) return cur;
-      const next = ((cur.activeIndex || 0) - 1 + t) % t;
-      return { ...cur, activeIndex: next };
+      const current = ensurePostShape(prev);
+      const count = current.media?.length || 0;
+      if (count < 2) return current;
+      const nextIndex = direction === 'prev' 
+        ? ((current.activeIndex || 0) - 1 + count) % count
+        : ((current.activeIndex || 0) + 1) % count;
+      return { ...current, activeIndex: nextIndex };
     });
   }, [setPost]);
 
-  const goNext = useCallback(() => {
-    setPost((prev) => {
-      const cur = ensurePostShape(prev);
-      const t = cur.media?.length || 0;
-      if (t < 2) return cur;
-      const next = ((cur.activeIndex || 0) + 1) % t;
-      return { ...cur, activeIndex: next };
-    });
-  }, [setPost]);
+  const handlePrevious = useCallback(() => navigateCarousel('prev'), [navigateCarousel]);
+  const handleNext = useCallback(() => navigateCarousel('next'), [navigateCarousel]);
 
-  // Arrow keys in present mode
   useEffect(() => {
     if (mode !== "present") return;
-    const onKey = (e) => {
-      if (e.key === "ArrowLeft") goPrev();
-      if (e.key === "ArrowRight") goNext();
+    const handleKeyDown = (e) => {
+      if (e.key === "ArrowLeft") handlePrevious();
+      if (e.key === "ArrowRight") handleNext();
     };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [mode, goPrev, goNext]);
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [mode, handlePrevious, handleNext]);
 
-  // Let the hook track image readiness on the preview node
   useEffect(() => {
     if (attachNode && previewRef?.current) {
       attachNode(previewRef.current);
     }
-  }, [attachNode, previewRef, p.media, p.videoSrc, p.platform, idx]);
+  }, [attachNode, previewRef, normalizedPost.media, normalizedPost.videoSrc, normalizedPost.platform, currentIndex]);
 
   return (
-    <div className={cx(p.platform === "instagram" ? "ig-ui" : "fb-ui", "h-full flex flex-col")}>
-      {/* actions */}
+    <div className={cx(normalizedPost.platform === "instagram" ? "ig-ui" : "fb-ui", "h-full flex flex-col")}>
       {showExport ? (
         <div className="flex justify-end mb-2 flex-shrink-0">
           <button
@@ -163,7 +150,6 @@ const RightPreview = forwardRef(function RightPreview(
         </div>
       ) : null}
 
-      {/* main preview container with centering and overflow handling */}
       <div className="flex-1 flex items-center justify-center overflow-hidden p-2">
         <div className="w-full h-full flex items-center justify-center">
           <div 
@@ -171,12 +157,11 @@ const RightPreview = forwardRef(function RightPreview(
             style={wrapperStyle}
           >
             <div ref={previewRef} className="card p-0 overflow-hidden w-full">
-              {/* header */}
               <div className="flex items-center gap-3 p-3">
                 <div className="w-10 h-10 rounded-full bg-slate-200 overflow-hidden shrink-0">
-                  {p.brand?.profileSrc ? (
+                  {normalizedPost.brand?.profileSrc ? (
                     <img
-                      src={p.brand.profileSrc}
+                      src={normalizedPost.brand.profileSrc}
                       alt=""
                       className="w-full h-full object-cover"
                       draggable={false}
@@ -185,27 +170,25 @@ const RightPreview = forwardRef(function RightPreview(
                 </div>
                 <div className="min-w-0">
                   <div className="brand-name font-medium truncate">
-                    {p.brand?.name || p.brand?.username || "Brand"}
-                    {p.brand?.verified ? (
+                    {normalizedPost.brand?.name || normalizedPost.brand?.username || "Brand"}
+                    {normalizedPost.brand?.verified ? (
                       <span className="ml-1 align-middle text-sky-500">✓</span>
                     ) : null}
                   </div>
                   <div className="meta text-xs text-slate-500 truncate">
-                    {p.platform === "instagram"
-                      ? `@${p.brand?.username || "username"}`
+                    {normalizedPost.platform === "instagram"
+                      ? `@${normalizedPost.brand?.username || "username"}`
                       : "Facebook · Now"}
                   </div>
                 </div>
               </div>
 
-              {/* caption */}
-              {p.caption ? (
+              {normalizedPost.caption ? (
                 <div className="px-3 pb-3">
-                  <div className="whitespace-pre-wrap text-sm">{p.caption}</div>
+                  <div className="whitespace-pre-wrap text-sm">{normalizedPost.caption}</div>
                 </div>
               ) : null}
 
-              {/* media area */}
               <div className="w-full">
                 <div
                   className={cx(
@@ -213,20 +196,19 @@ const RightPreview = forwardRef(function RightPreview(
                     aspectClass
                   )}
                 >
-                  {/* content */}
-                  {p.type === "video" && p.videoSrc ? (
+                  {normalizedPost.type === "video" && normalizedPost.videoSrc ? (
                     <video
                       ref={videoRef}
-                      src={p.videoSrc}
+                      src={normalizedPost.videoSrc}
                       className="absolute inset-0 w-full h-full object-cover"
-                      autoPlay={p.playing}
-                      muted={p.muted}
+                      autoPlay={normalizedPost.playing}
+                      muted={normalizedPost.muted}
                       loop
                       playsInline
                     />
-                  ) : total > 0 ? (
+                  ) : mediaCount > 0 ? (
                     <img
-                      src={p.media[idx]}
+                      src={normalizedPost.media[currentIndex]}
                       alt=""
                       className="absolute inset-0 w-full h-full object-cover"
                       draggable={false}
@@ -237,23 +219,21 @@ const RightPreview = forwardRef(function RightPreview(
                     </div>
                   )}
 
-                  {/* per-image headline */}
-                  {p.type !== "video" &&
-                  total > 0 &&
-                  (p.mediaMeta?.[idx]?.headline || "").trim() ? (
+                  {normalizedPost.type !== "video" &&
+                  mediaCount > 0 &&
+                  (normalizedPost.mediaMeta?.[currentIndex]?.headline || "").trim() ? (
                     <div className="absolute left-3 top-3 bg-white/90 px-2 py-1 rounded shadow text-sm">
-                      {p.mediaMeta[idx].headline}
+                      {normalizedPost.mediaMeta[currentIndex].headline}
                     </div>
                   ) : null}
 
-                  {/* controls overlay */}
-                  {p.type !== "video" && total > 1 ? (
+                  {normalizedPost.type !== "video" && mediaCount > 1 ? (
                     <div className="absolute inset-0 p-2 pointer-events-none">
                       <div className="h-full flex items-center justify-between">
                         <button
                           type="button"
                           className="pointer-events-auto w-8 h-8 rounded-full bg-white/90 ring-1 ring-black/10 flex items-center justify-center"
-                          onClick={goPrev}
+                          onClick={handlePrevious}
                           aria-label="Previous"
                         >
                           ‹
@@ -261,21 +241,20 @@ const RightPreview = forwardRef(function RightPreview(
                         <button
                           type="button"
                           className="pointer-events-auto w-8 h-8 rounded-full bg-white/90 ring-1 ring-black/10 flex items-center justify-center"
-                          onClick={goNext}
+                          onClick={handleNext}
                           aria-label="Next"
                         >
                           ›
                         </button>
                       </div>
 
-                      {/* dots */}
                       <div className="pointer-events-none absolute bottom-2 left-0 right-0 flex justify-center gap-1">
-                        {Array.from({ length: total }).map((_, i) => (
+                        {Array.from({ length: mediaCount }).map((_, dotIndex) => (
                           <span
-                            key={i}
+                            key={dotIndex}
                             className={cx(
                               "inline-block w-1.5 h-1.5 rounded-full",
-                              i === idx ? "bg-white shadow" : "bg-white/60"
+                              dotIndex === currentIndex ? "bg-white shadow" : "bg-white/60"
                             )}
                           />
                         ))}
@@ -285,28 +264,27 @@ const RightPreview = forwardRef(function RightPreview(
                 </div>
               </div>
 
-              {/* FB link card */}
-              {p.platform === "facebook" &&
-              (p.link?.headline || p.link?.subhead || p.link?.url) ? (
+              {normalizedPost.platform === "facebook" &&
+              (normalizedPost.link?.headline || normalizedPost.link?.subhead || normalizedPost.link?.url) ? (
                 <div className="px-3 py-3">
                   <a
-                    href={p.link?.url || "#"}
+                    href={normalizedPost.link?.url || "#"}
                     className="block border rounded-lg overflow-hidden hover:bg-slate-50 transition"
                     onClick={(e) => e.preventDefault()}
                   >
                     <div className="p-3">
                       <div className="link-headline font-medium truncate">
-                        {p.link?.headline || "Link headline"}
+                        {normalizedPost.link?.headline || "Link headline"}
                       </div>
                       <div className="link-subhead text-sm text-slate-600 truncate">
-                        {p.link?.subhead || "Add a subhead"}
+                        {normalizedPost.link?.subhead || "Add a subhead"}
                       </div>
                       <div className="mt-2 text-xs text-slate-500 truncate">
-                        {tryGetHostname(p.link?.url)}
+                        {tryGetHostname(normalizedPost.link?.url)}
                       </div>
                       <div className="mt-3">
                         <span className="cta inline-block px-3 py-1 rounded bg-slate-900 text-white text-sm">
-                          {p.link?.cta || "Learn More"}
+                          {normalizedPost.link?.cta || "Learn More"}
                         </span>
                       </div>
                     </div>
@@ -314,12 +292,11 @@ const RightPreview = forwardRef(function RightPreview(
                 </div>
               ) : null}
 
-              {/* footer metrics */}
               <div className="px-3 py-2 border-t text-xs text-slate-500 flex items-center gap-4">
-                {["likes", "comments", "shares", "saves", "views"].map((k) =>
-                  p.metrics?.[k] ? (
-                    <span key={k}>
-                      {labelForMetric(k)} {formatNumber(p.metrics[k])}
+                {["likes", "comments", "shares", "saves", "views"].map((metricKey) =>
+                  normalizedPost.metrics?.[metricKey] ? (
+                    <span key={metricKey}>
+                      {labelForMetric(metricKey)} {formatNumber(normalizedPost.metrics[metricKey])}
                     </span>
                   ) : null
                 )}
@@ -329,7 +306,6 @@ const RightPreview = forwardRef(function RightPreview(
         </div>
       </div>
 
-      {/* aspect utilities fallback with new ratios */}
       <style>{`
         .aspect-square { aspect-ratio: 1 / 1; }
         .aspect-video { aspect-ratio: 16 / 9; }

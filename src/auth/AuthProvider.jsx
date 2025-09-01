@@ -1,46 +1,63 @@
-import React, { createContext, useContext, useEffect, useState } from "react";
+import React, { createContext, useContext, useEffect, useState, useMemo } from "react";
 import { supabase } from "../lib/supabaseClient";
 
-const AuthCtx = createContext(null);
-export const useAuth = () => useContext(AuthCtx);
+const AuthContext = createContext(null);
+export const useAuth = () => useContext(AuthContext);
 
 export function AuthProvider({ children }) {
   const [session, setSession] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
 
-  // Initial session + listener
   useEffect(() => {
     let mounted = true;
 
+    const handleAuthError = (error) => {
+      console.error("Auth error:", error);
+      setError(error.message || "Authentication failed");
+    };
+
     supabase.auth.getSession().then(({ data, error }) => {
-      if (error) console.error("getSession error:", error);
+      if (error) handleAuthError(error);
       if (mounted) {
         setSession(data?.session ?? null);
+        setError(null);
         setLoading(false);
       }
     });
 
-    const { data: sub } = supabase.auth.onAuthStateChange((_event, newSession) => {
-      setSession(newSession ?? null);
-      setLoading(false);
+    const { data: subscription } = supabase.auth.onAuthStateChange((_event, newSession) => {
+      if (mounted) {
+        setSession(newSession ?? null);
+        setError(null);
+        setLoading(false);
+      }
     });
 
     return () => {
       mounted = false;
-      sub?.subscription?.unsubscribe?.();
+      subscription?.subscription?.unsubscribe?.();
     };
   }, []);
 
-  const user = session?.user ?? null;
-
-  const signOut = async () => {
-    const { error } = await supabase.auth.signOut();
-    if (error) console.error("signOut error:", error);
-  };
+  const contextValue = useMemo(() => ({
+    user: session?.user ?? null,
+    session,
+    loading,
+    error,
+    signOut: async () => {
+      setError(null);
+      const { error } = await supabase.auth.signOut();
+      if (error) {
+        console.error("signOut error:", error);
+        setError(error.message || "Sign out failed");
+      }
+    }
+  }), [session, loading, error]);
 
   return (
-    <AuthCtx.Provider value={{ user, session, loading, signOut }}>
+    <AuthContext.Provider value={contextValue}>
       {children}
-    </AuthCtx.Provider>
+    </AuthContext.Provider>
   );
 }

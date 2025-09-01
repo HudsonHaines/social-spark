@@ -29,35 +29,45 @@ import { supabase } from "./lib/supabaseClient";
 const uid = () => Math.random().toString(36).slice(2, 10);
 
 export default function App() {
-  // core editor state
+  // Core editor state
   const [post, setPost] = useState(() => ensurePostShape(emptyPost));
-  const [deck, setDeck] = useState([]); // local scratch deck
-  const [mode, setMode] = useState("create"); // create | present
-  const [page, setPage] = useState("editor"); // editor | decks | brands
+  const [localDeck, setLocalDeck] = useState([]);
+  
+  // App navigation state
+  const [appState, setAppState] = useState({
+    mode: "create", // create | present
+    page: "editor", // editor | decks | brands
+  });
+  
+  // Presentation state
+  const [presentationState, setPresentationState] = useState({
+    posts: [],
+    currentIndex: 0,
+  });
 
-  // presenter state
-  const [presentPosts, setPresentPosts] = useState([]);
-
-  // ui state
-  const [menuOpen, setMenuOpen] = useState(false);
-  const [brandMgr, setBrandMgr] = useState(false);
-  const [deckMgr, setDeckMgr] = useState(false);
-  const [deckPickerOpen, setDeckPickerOpen] = useState(false);
+  // UI modal state
+  const [uiState, setUiState] = useState({
+    menuOpen: false,
+    brandManagerOpen: false,
+    deckManagerOpen: false,
+    deckPickerOpen: false,
+  });
 
   // refs
   const previewRef = useRef(null);
   const videoRef = useRef(null);
 
-  // FIXED: Use the export stability hook
+  // Export stability hook
   const { isExporting, imagesReady, exportAsPng, attachNode } = useExportStability();
 
-  // Attach the preview ref to the export hook
   useEffect(() => {
     attachNode(previewRef.current);
   }, [attachNode]);
 
-  // auth
+  // Auth state (simplified)
   const [userId, setUserId] = useState(null);
+  const authenticatedUser = useMemo(() => userId ? { id: userId } : null, [userId]);
+  
   useEffect(() => {
     let active = true;
     supabase.auth.getUser().then(({ data }) => {
@@ -71,13 +81,9 @@ export default function App() {
       data?.subscription?.unsubscribe?.();
     };
   }, []);
-  const user = userId ? { id: userId } : null;
 
-  // shape guard
-  const safePost = useMemo(() => ensurePostShape(post), [post]);
-
-  // updater that normalizes
-  const update = useCallback((patchOrFn) => {
+  // Post updater with normalization
+  const updatePost = useCallback((patchOrFn) => {
     setPost((p) => {
       const next =
         typeof patchOrFn === "function" ? patchOrFn(ensurePostShape(p)) : { ...p, ...patchOrFn };
@@ -85,8 +91,28 @@ export default function App() {
     });
   }, []);
 
-  // images -> data URLs
-  const handleImageFiles = useCallback(async (fileList) => {
+  // Consolidated auth check utility
+  const ensureAuthenticated = useCallback(async () => {
+    let currentUserId = userId;
+    if (!currentUserId) {
+      const { data } = await supabase.auth.getUser();
+      currentUserId = data?.user?.id ?? null;
+      if (currentUserId) setUserId(currentUserId);
+    }
+    if (!currentUserId) {
+      alert("Please sign in first.");
+      return null;
+    }
+    return currentUserId;
+  }, [userId]);
+
+  // Navigation helpers
+  const navigateToPage = useCallback((page) => {
+    setAppState(prev => ({ ...prev, page }));
+  }, []);
+
+  // File processing (memoized)
+  const processImageFiles = useCallback(async (fileList) => {
     const files = Array.from(fileList || []).slice(0, 5);
     if (!files.length) return;
 
@@ -117,8 +143,7 @@ export default function App() {
     });
   }, []);
 
-  // video -> data URL
-  const handleVideoFile = useCallback(async (file) => {
+  const processVideoFile = useCallback(async (file) => {
     if (!file) return;
     const data = await new Promise((res, rej) => {
       const reader = new FileReader();
@@ -129,7 +154,7 @@ export default function App() {
     setPost((p) => ensurePostShape({ ...p, videoSrc: data, type: "video" }));
   }, []);
 
-  const clearVideo = useCallback(() => {
+  const removeVideo = useCallback(() => {
     setPost((p) => ensurePostShape({ ...p, videoSrc: "", type: "single" }));
   }, []);
 
@@ -153,7 +178,7 @@ export default function App() {
     });
   }, []);
 
-  // drag and drop
+  // Drag and drop handler
   const onDrop = useCallback(
     async (e) => {
       e.preventDefault();
@@ -169,13 +194,13 @@ export default function App() {
         else if (!vid && item.type.startsWith("video/")) vid = item;
       }
 
-      if (imgs.length) await handleImageFiles(imgs);
-      if (vid) await handleVideoFile(vid);
+      if (imgs.length) await processImageFiles(imgs);
+      if (vid) await processVideoFile(vid);
     },
-    [handleImageFiles, handleVideoFile]
+    [processImageFiles, processVideoFile]
   );
 
-  // local scratch deck
+  // Local deck operations
   const addToDeck = useCallback(
     (p) => {
       const item = {
@@ -183,13 +208,13 @@ export default function App() {
         createdAt: Date.now(),
         post: ensurePostShape(p || post),
       };
-      setDeck((d) => [item, ...d]);
+      setLocalDeck((d) => [item, ...d]);
     },
     [post]
   );
 
   const duplicateToDeck = useCallback((id) => {
-    setDeck((d) => {
+    setLocalDeck((d) => {
       const it = d.find((x) => x.id === id);
       if (!it) return d;
       const clone = { ...it, id: uid(), createdAt: Date.now() };
@@ -198,7 +223,7 @@ export default function App() {
   }, []);
 
   const loadFromDeck = useCallback((id) => {
-    setDeck((d) => {
+    setLocalDeck((d) => {
       const it = d.find((x) => x.id === id);
       if (it) setPost(ensurePostShape(it.post));
       return d;
@@ -206,17 +231,19 @@ export default function App() {
   }, []);
 
   const deleteFromDeck = useCallback((id) => {
-    setDeck((d) => d.filter((x) => x.id !== id));
+    setLocalDeck((d) => d.filter((x) => x.id !== id));
   }, []);
 
-  // present from Decks page (Supabase deck)
+  // Presentation mode handlers
   const presentFromDecksPage = useCallback(async (deckId) => {
     try {
       const rows = await listDeckItems(deckId);
       const posts = rows.map((r) => r.post_json);
-      setPresentPosts(posts);
-      setPage("editor");
-      setMode("present");
+      setPresentationState({ posts, currentIndex: 0 });
+      setAppState({
+        page: "editor",
+        mode: "present",
+      });
       if (posts.length) setPost(ensurePostShape(posts[0]));
     } catch (e) {
       console.error(e);
@@ -224,35 +251,27 @@ export default function App() {
     }
   }, []);
 
-  // start presenting from local scratch deck
   const startPresentingLocalDeck = useCallback(() => {
-    if (deck.length === 0) {
+    if (localDeck.length === 0) {
       alert("Add some posts to your deck first to start presenting.");
       return;
     }
-    const posts = deck.map((d) => d.post);
-    setPresentPosts(posts);
-    setMode("present");
+    const posts = localDeck.map((d) => d.post);
+    setPresentationState({ posts, currentIndex: 0 });
+    setAppState(prev => ({ ...prev, mode: "present" }));
     if (posts.length) setPost(ensurePostShape(posts[0]));
-  }, [deck]);
+  }, [localDeck]);
 
-  // exit present mode
   const exitPresentMode = useCallback(() => {
-    setMode("create");
-    setPresentPosts([]);
+    setAppState(prev => ({ ...prev, mode: "create" }));
+    setPresentationState({ posts: [], currentIndex: 0 });
   }, []);
 
-  // save current post to Supabase deck
+  // Deck operations
   const saveToDeck = useCallback(
     async ({ deckId } = {}) => {
-      let uidNow = userId;
-      if (!uidNow) {
-        const { data } = await supabase.auth.getUser();
-        uidNow = data?.user?.id ?? null;
-        if (uidNow) setUserId(uidNow);
-      }
-      if (!uidNow) {
-        alert("Please sign in to save posts to a deck.");
+      const authenticatedUserId = await ensureAuthenticated();
+      if (!authenticatedUserId) {
         return;
       }
 
@@ -264,12 +283,12 @@ export default function App() {
             (prompt("Save to which deck title? If it does not exist, it will be created.") || "").trim();
           if (!title) return;
 
-          const decks = await listDecks(uidNow);
+          const decks = await listDecks(authenticatedUserId);
           const existing = decks.find((d) => d.title.toLowerCase() === title.toLowerCase());
           if (existing) {
             targetDeckId = existing.id;
           } else {
-            const created = await createDeck(uidNow, title);
+            const created = await createDeck(authenticatedUserId, title);
             targetDeckId = created.id;
           }
         }
@@ -282,30 +301,23 @@ export default function App() {
         alert("Could not save to deck.");
       }
     },
-    [post, userId]
+    [post, ensureAuthenticated]
   );
 
-  // deck picker open
   const openDeckPicker = useCallback(async () => {
-    let uidNow = userId;
-    if (!uidNow) {
-      const { data } = await supabase.auth.getUser();
-      uidNow = data?.user?.id ?? null;
-      if (uidNow) setUserId(uidNow);
-    }
-    if (!uidNow) {
-      alert("Please sign in first.");
+    const authenticatedUserId = await ensureAuthenticated();
+    if (!authenticatedUserId) {
       return;
     }
-    setDeckPickerOpen(true);
-  }, [userId]);
+    setUiState(prev => ({ ...prev, deckPickerOpen: true }));
+  }, [ensureAuthenticated]);
 
   const handlePickDeckAndSave = useCallback(
     async (pickedId) => {
       try {
         const postJson = ensurePostShape(post);
         await addItemToDeck(pickedId, postJson);
-        setDeckPickerOpen(false);
+        setUiState(prev => ({ ...prev, deckPickerOpen: false }));
         alert("Saved to deck.");
       } catch (e) {
         console.error(e);
@@ -315,7 +327,7 @@ export default function App() {
     [post]
   );
 
-  // FIXED: Use the stable export function
+  // Export handler
   const handleExportPNG = useCallback(async () => {
     try {
       await exportAsPng(previewRef);
@@ -324,82 +336,80 @@ export default function App() {
     }
   }, [exportAsPng]);
 
-  // FIXED: Determine if we can present (have posts available)
+  // Derived state
   const canPresent = useMemo(() => {
-    return deck.length > 0; // Can present local deck
-  }, [deck.length]);
+    return localDeck.length > 0;
+  }, [localDeck.length]);
 
-  // FIXED: Handle present mode toggle properly
   const handlePresentModeToggle = useCallback(() => {
-    if (mode === "present") {
+    if (appState.mode === "present") {
       exitPresentMode();
     } else {
       startPresentingLocalDeck();
     }
-  }, [mode, exitPresentMode, startPresentingLocalDeck]);
+  }, [appState.mode, exitPresentMode, startPresentingLocalDeck]);
 
   return (
     <Fragment>
       <AppShell
-        singleColumn={page === "decks" || page === "brands"}
+        singleColumn={appState.page === "decks" || appState.page === "brands"}
         topBarProps={{
-          mode,
-          setMode, // Keep this for direct mode setting
-          onExportPNG: handleExportPNG, // FIXED: Use stable export
-          user,
-          onOpenMenu: () => setMenuOpen(true),
-          openDeckManager: () => setPage("decks"),
+          mode: appState.mode,
+          setMode: (mode) => setAppState(prev => ({ ...prev, mode })),
+          onExportPNG: handleExportPNG,
+          user: authenticatedUser,
+          onOpenMenu: () => setUiState(prev => ({ ...prev, menuOpen: true })),
+          openDeckManager: () => navigateToPage("decks"),
           openDeckPicker,
-          // FIXED: Add these props for better present mode handling
           canPresent,
           onStartPresent: handlePresentModeToggle,
-          exportDisabled: !imagesReady || isExporting, // FIXED: Disable while images loading
+          exportDisabled: !imagesReady || isExporting,
         }}
         leftPanel={
-          page === "decks" ? (
+          appState.page === "decks" ? (
             <DecksPage
               userId={userId}
               currentPost={null}
-              onBack={() => setPage("editor")}
+              onBack={() => navigateToPage("editor")}
               onPresent={presentFromDecksPage}
             />
-          ) : page === "brands" ? (
+          ) : appState.page === "brands" ? (
             <BrandsPage
               userId={userId}
-              onBack={() => setPage("editor")}
-              onOpenBrandManager={() => setBrandMgr(true)}
+              onBack={() => navigateToPage("editor")}
+              onOpenBrandManager={() => setUiState(prev => ({ ...prev, brandManagerOpen: true }))}
             />
-          ) : mode === "present" ? null : (
+          ) : appState.mode === "present" ? null : (
             <LeftPanel
-              user={user}
-              post={safePost}
-              update={update}
+              user={authenticatedUser}
+              post={post}
+              update={updatePost}
               onDrop={onDrop}
-              handleImageFiles={handleImageFiles}
-              handleVideoFile={handleVideoFile}
-              clearVideo={clearVideo}
+              handleImageFiles={processImageFiles}
+              handleVideoFile={processVideoFile}
+              clearVideo={removeVideo}
               removeImageAt={removeImageAt}
               addToDeck={addToDeck}
               duplicateToDeck={duplicateToDeck}
-              deck={deck}
+              deck={localDeck}
               loadFromDeck={loadFromDeck}
               deleteFromDeck={deleteFromDeck}
               startPresentingDeck={startPresentingLocalDeck}
               loadingDeck={false}
-              openBrandManager={() => setBrandMgr(true)}
+              openBrandManager={() => setUiState(prev => ({ ...prev, brandManagerOpen: true }))}
               saveToDeck={saveToDeck}
               openDeckPicker={openDeckPicker}
             />
           )
         }
         rightPreview={
-          page !== "editor"
+          appState.page !== "editor"
             ? null
-            : mode === "present"
+            : appState.mode === "present"
             ? (
               <EditorPresentMode
-                posts={presentPosts}
-                initialIndex={0}
+                posts={presentationState.posts}
+                initialIndex={presentationState.currentIndex}
                 onClose={exitPresentMode}
                 showPlatformTags={true}
               />
@@ -407,26 +417,26 @@ export default function App() {
             : (
               <RightPreview
                 ref={previewRef}
-                post={safePost}
+                post={post}
                 setPost={setPost}
-                mode={mode}
-                saveAsPng={handleExportPNG} // FIXED: Use stable export
-                savingImg={isExporting} // FIXED: Use hook state
+                mode={appState.mode}
+                saveAsPng={handleExportPNG}
+                savingImg={isExporting}
                 videoRef={videoRef}
                 showExport={true}
               />
             )
         }
         modals={{
-          brandManagerOpen: brandMgr,
-          onCloseBrandManager: () => setBrandMgr(false),
-          deckManagerOpen: deckMgr,
-          onCloseDeckManager: () => setDeckMgr(false),
+          brandManagerOpen: uiState.brandManagerOpen,
+          onCloseBrandManager: () => setUiState(prev => ({ ...prev, brandManagerOpen: false })),
+          deckManagerOpen: uiState.deckManagerOpen,
+          onCloseDeckManager: () => setUiState(prev => ({ ...prev, deckManagerOpen: false })),
           deckManagerOnOpenForPresent: (payload) => {
-            setDeckMgr(false);
-            setMode("present");
+            setUiState(prev => ({ ...prev, deckManagerOpen: false }));
+            setAppState(prev => ({ ...prev, mode: "present" }));
             if (payload?.posts?.length) {
-              setPresentPosts(payload.posts);
+              setPresentationState({ posts: payload.posts, currentIndex: 0 });
               setPost(ensurePostShape(payload.posts[0]));
             }
           },
@@ -434,16 +444,16 @@ export default function App() {
       />
 
       <MenuDrawer
-        open={menuOpen}
-        onClose={() => setMenuOpen(false)}
-        onOpenDeckManager={() => setPage("decks")}
-        onOpenBrandsPage={() => setPage("brands")}
+        open={uiState.menuOpen}
+        onClose={() => setUiState(prev => ({ ...prev, menuOpen: false }))}
+        onOpenDeckManager={() => navigateToPage("decks")}
+        onOpenBrandsPage={() => navigateToPage("brands")}
       />
 
       <DeckPickerV3
         userId={userId}
-        open={deckPickerOpen}
-        onClose={() => setDeckPickerOpen(false)}
+        open={uiState.deckPickerOpen}
+        onClose={() => setUiState(prev => ({ ...prev, deckPickerOpen: false }))}
         onPick={handlePickDeckAndSave}
       />
     </Fragment>

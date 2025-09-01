@@ -1,5 +1,5 @@
 // src/decks/DecksPage.jsx
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState, useCallback } from "react";
 import {
   listDecks,
   listDeckItems,
@@ -29,15 +29,23 @@ export default function DecksPage({
   onPresent, // (deckId) => void
   onLoadToEditor, // optional: (post) => void
 }) {
-  const [loadingDecks, setLoadingDecks] = useState(true);
-  const [loadingItems, setLoadingItems] = useState(false);
-  const [decks, setDecks] = useState([]);
-  const [activeId, setActiveId] = useState(null); // store as string
-  const [items, setItems] = useState([]);
+  // Consolidated state
+  const [state, setState] = useState({
+    decks: [],
+    items: [],
+    activeId: null,
+    loading: {
+      decks: true,
+      items: false,
+      operations: new Set()
+    },
+    error: null
+  });
 
-  // modal preview
   const [previewOpen, setPreviewOpen] = useState(false);
   const [previewPost, setPreviewPost] = useState(null);
+
+  const { decks, items, activeId, loading } = state;
 
   const activeDeck = useMemo(
     () => decks.find((d) => String(d.id) === activeId) || null,
@@ -46,66 +54,121 @@ export default function DecksPage({
 
   useEffect(() => {
     let mounted = true;
-    async function run() {
+    
+    const loadDecks = async () => {
       if (!userId) {
-        setDecks([]);
-        setLoadingDecks(false);
+        if (mounted) {
+          setState(prev => ({
+            ...prev,
+            decks: [],
+            loading: { ...prev.loading, decks: false }
+          }));
+        }
         return;
       }
-      setLoadingDecks(true);
+      
       try {
         const rows = await listDecks(userId);
         if (!mounted) return;
-        setDecks(rows);
-        if (rows.length && !activeId) setActiveId(String(rows[0].id));
-      } catch (e) {
-        console.error(e);
-      } finally {
-        if (mounted) setLoadingDecks(false);
+        
+        setState(prev => ({
+          ...prev,
+          decks: rows,
+          activeId: rows.length && !prev.activeId ? String(rows[0].id) : prev.activeId,
+          loading: { ...prev.loading, decks: false },
+          error: null
+        }));
+      } catch (error) {
+        console.error('Load decks error:', error);
+        if (mounted) {
+          setState(prev => ({
+            ...prev,
+            loading: { ...prev.loading, decks: false },
+            error: error.message
+          }));
+        }
       }
-    }
-    run();
-    return () => {
-      mounted = false;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    
+    loadDecks();
+    return () => { mounted = false; };
   }, [userId]);
 
+  // Load items effect
   useEffect(() => {
     let mounted = true;
-    async function loadItems() {
+    
+    const loadItems = async () => {
       if (!activeId) {
-        setItems([]);
+        if (mounted) {
+          setState(prev => ({ ...prev, items: [] }));
+        }
         return;
       }
-      setLoadingItems(true);
+      
+      setState(prev => ({ 
+        ...prev, 
+        loading: { ...prev.loading, items: true } 
+      }));
+      
       try {
         const rows = await listDeckItems(activeId);
-        if (!mounted) return;
-        setItems(rows);
-      } catch (e) {
-        console.error(e);
-      } finally {
-        if (mounted) setLoadingItems(false);
+        if (mounted) {
+          setState(prev => ({
+            ...prev,
+            items: rows,
+            loading: { ...prev.loading, items: false },
+            error: null
+          }));
+        }
+      } catch (error) {
+        console.error('Load items error:', error);
+        if (mounted) {
+          setState(prev => ({
+            ...prev,
+            loading: { ...prev.loading, items: false },
+            error: error.message
+          }));
+        }
       }
-    }
-    loadItems();
-    return () => {
-      mounted = false;
     };
+    
+    loadItems();
+    return () => { mounted = false; };
   }, [activeId]);
 
-  async function handleAddCurrent() {
+  // Memoized handlers
+  const handleAddCurrent = useCallback(async () => {
     if (!currentPost || !activeId) return;
+    
+    const opId = 'add-current';
+    setState(prev => ({
+      ...prev,
+      loading: { ...prev.loading, operations: new Set(prev.loading.operations).add(opId) }
+    }));
+    
     try {
       await addItemToDeck(activeId, ensurePostShape(currentPost));
       const rows = await listDeckItems(activeId);
-      setItems(rows);
-    } catch (e) {
-      console.error(e);
+      setState(prev => ({
+        ...prev,
+        items: rows,
+        error: null
+      }));
+    } catch (error) {
+      console.error('Add current error:', error);
       alert("Could not add post.");
+    } finally {
+      setState(prev => {
+        const newOps = new Set(prev.loading.operations);
+        newOps.delete(opId);
+        return {
+          ...prev,
+          loading: { ...prev.loading, operations: newOps }
+        };
+      });
     }
-  }
+  }, [currentPost, activeId]);
 
   async function handleDeleteDeck(deckId) {
     if (!deckId) return;
@@ -227,7 +290,7 @@ export default function DecksPage({
               Your decks
             </div>
             <div className="max-h-[60vh] overflow-auto">
-              {loadingDecks ? (
+              {loading.decks ? (
                 <div className="p-3 text-sm text-app-muted">Loading...</div>
               ) : decks.length === 0 ? (
                 <div className="p-3 text-sm text-app-muted">No decks yet</div>
@@ -246,11 +309,11 @@ export default function DecksPage({
                           "px-3 py-2 cursor-pointer outline-none",
                           selected ? "bg-slate-50" : "hover:bg-slate-50"
                         )}
-                        onClick={() => setActiveId(idStr)}
+                        onClick={() => setState(prev => ({ ...prev, activeId: idStr }))}
                         onKeyDown={(e) => {
                           if (e.key === "Enter" || e.key === " ") {
                             e.preventDefault();
-                            setActiveId(idStr);
+                            setState(prev => ({ ...prev, activeId: idStr }));
                           }
                         }}
                       >
@@ -297,7 +360,7 @@ export default function DecksPage({
               {activeDeck ? activeDeck.title : "Deck items"}
             </div>
 
-            {loadingItems ? (
+            {loading.items ? (
               <div className="p-4 text-sm text-app-muted">Loading...</div>
             ) : !activeDeck ? (
               <div className="p-4 text-sm text-app-muted">Pick a deck</div>

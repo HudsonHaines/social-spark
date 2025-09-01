@@ -1,16 +1,14 @@
 // src/data/brands.js
 import { useCallback, useEffect, useState } from "react";
 import { supabase } from "../lib/supabaseClient";
+import { sanitizeBrandInput, validateBrandForm } from "./brandShape";
 
-// normalize incoming brand shape
+// Legacy function wrapper - use sanitizeBrandInput from brandShape instead
 function sanitizeBrand(data = {}) {
+  const sanitized = sanitizeBrandInput(data);
   return {
     id: data.id ?? undefined,
-    fb_name: data.fb_name?.trim() || "",
-    fb_avatar_url: data.fb_avatar_url?.trim() || "",
-    ig_username: data.ig_username?.trim()?.replace(/^@/, "")?.toLowerCase() || "",
-    ig_avatar_url: data.ig_avatar_url?.trim() || "",
-    verified: !!data.verified,
+    ...sanitized,
   };
 }
 
@@ -35,25 +33,41 @@ export async function fetchBrands(userId) {
 export async function upsertBrand(userId, brand) {
   if (!userId) throw new Error("Missing userId");
   if (!supabase) throw new Error("Supabase client is undefined");
+  
   const clean = sanitizeBrand(brand);
+  
+  // Validate the brand data
+  const validation = validateBrandForm(clean);
+  if (!validation.isValid) {
+    const firstError = Object.values(validation.errors)[0];
+    throw new Error(firstError || "Invalid brand data");
+  }
+
+  const brandData = {
+    fb_name: clean.fb_name,
+    fb_avatar_url: clean.fb_avatar_url,
+    ig_username: clean.ig_username,
+    ig_avatar_url: clean.ig_avatar_url,
+    verified: clean.verified,
+    updated_at: new Date().toISOString(),
+  };
 
   // update
   if (clean.id) {
     const { data, error } = await supabase
       .from("brands")
-      .update({
-        fb_name: clean.fb_name,
-        fb_avatar_url: clean.fb_avatar_url,
-        ig_username: clean.ig_username,
-        ig_avatar_url: clean.ig_avatar_url,
-        verified: clean.verified,
-      })
+      .update(brandData)
       .eq("id", clean.id)
       .eq("user_id", userId)
       .select()
       .single(); // fail if not found
 
-    if (error) throw error;
+    if (error) {
+      if (error.code === 'PGRST116') {
+        throw new Error('Brand not found or access denied');
+      }
+      throw error;
+    }
     return data;
   }
 
@@ -63,17 +77,19 @@ export async function upsertBrand(userId, brand) {
     .insert([
       {
         user_id: userId,
-        fb_name: clean.fb_name,
-        fb_avatar_url: clean.fb_avatar_url,
-        ig_username: clean.ig_username,
-        ig_avatar_url: clean.ig_avatar_url,
-        verified: clean.verified,
+        ...brandData,
+        created_at: new Date().toISOString(),
       },
     ])
     .select()
     .single();
 
-  if (error) throw error;
+  if (error) {
+    if (error.code === '23505') {
+      throw new Error('A brand with this name already exists');
+    }
+    throw error;
+  }
   return data;
 }
 
@@ -186,7 +202,16 @@ export function useBrands(userId) {
       setSaving(true);
       setError("");
       try {
+        // Pre-validate on the client side for better UX
+        const clean = sanitizeBrand(brandInput);
+        const validation = validateBrandForm(clean);
+        if (!validation.isValid) {
+          const firstError = Object.values(validation.errors)[0];
+          throw new Error(firstError || "Invalid brand data");
+        }
+        
         const saved = await upsertBrand(userId, brandInput);
+        
         // optimistic update
         setBrands((prev) => {
           const idx = prev.findIndex((b) => b.id === saved.id);
@@ -198,7 +223,8 @@ export function useBrands(userId) {
         return saved;
       } catch (e) {
         console.error("[useBrands] save error:", e);
-        setError(e.message || "Failed to save brand");
+        const errorMessage = e.message || "Failed to save brand";
+        setError(errorMessage);
         throw e;
       } finally {
         setSaving(false);
@@ -210,15 +236,19 @@ export function useBrands(userId) {
   const removeBrand = useCallback(
     async (id) => {
       if (!userId) throw new Error("Not signed in");
+      if (!id) throw new Error("Brand ID is required");
+      
       setSaving(true);
       setError("");
       try {
         await deleteBrand(userId, id);
+        // optimistic update
         setBrands((prev) => prev.filter((b) => b.id !== id));
         return true;
       } catch (e) {
         console.error("[useBrands] delete error:", e);
-        setError(e.message || "Failed to delete brand");
+        const errorMessage = e.message || "Failed to delete brand";
+        setError(errorMessage);
         throw e;
       } finally {
         setSaving(false);
@@ -230,11 +260,14 @@ export function useBrands(userId) {
   const reload = useCallback(async () => {
     if (!userId) return;
     setLoading(true);
+    setError("");
     try {
-      setBrands(await fetchBrands(userId));
+      const brands = await fetchBrands(userId);
+      setBrands(brands);
     } catch (e) {
       console.error("[useBrands] reload error:", e);
-      setError(e.message || "Failed to reload brands");
+      const errorMessage = e.message || "Failed to reload brands";
+      setError(errorMessage);
     } finally {
       setLoading(false);
     }

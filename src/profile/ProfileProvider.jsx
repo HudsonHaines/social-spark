@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
+import React, { createContext, useContext, useEffect, useRef, useState, useMemo, useCallback } from 'react';
 import { supabase } from '../lib/supabaseClient';
 import {
   fetchProfile,
@@ -12,90 +12,103 @@ const ProfileContext = createContext(null);
 export function ProfileProvider({ children }) {
   const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
 
-  // prevent overlapping loads when auth fires multiple events
-  const loadingGuard = useRef(false);
+  const loadingRef = useRef(false);
 
-  async function loadForSession(session, source = 'unknown') {
-    // Always end with setLoading(false) even on early returns
-    setLoading(true);
-    if (loadingGuard.current) {
-      // another load is running; let it complete
+  const loadProfile = useCallback(async (session) => {
+    if (loadingRef.current) {
       return;
     }
-    loadingGuard.current = true;
+    
+    loadingRef.current = true;
+    setLoading(true);
+    setError(null);
+    
     try {
       const user = session?.user || null;
-
       if (!user) {
         setProfile(null);
-        return; // finally will flip loading off
+        return;
       }
 
-      // Ensure row exists; then fetch fresh profile
       await ensureProfileExists();
-      const p = await fetchProfile();
-      setProfile(p);
-    } catch (e) {
-      console.error(`[profile] load error (${source}):`, e);
-      // keep UI usable even on errors
+      const profileData = await fetchProfile();
+      setProfile(profileData);
+    } catch (err) {
+      console.error('Profile load error:', err);
+      setError(err.message || 'Failed to load profile');
       setProfile(null);
     } finally {
-      loadingGuard.current = false;
+      loadingRef.current = false;
       setLoading(false);
     }
-  }
+  }, []);
 
   useEffect(() => {
     let active = true;
 
-    // 1) Load once using the current session
     (async () => {
       const { data: { session } } = await supabase.auth.getSession();
       if (!active) return;
-      await loadForSession(session, 'getSession');
+      await loadProfile(session);
     })();
 
-    // 2) React to future auth changes (sign-in / sign-out / token refresh)
-    const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
-      // We don’t trust event order; always load for the provided session
-      loadForSession(session, _event);
+    const { data: subscription } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (active) {
+        loadProfile(session);
+      }
     });
 
     return () => {
       active = false;
-      sub?.subscription?.unsubscribe();
+      subscription?.subscription?.unsubscribe();
     };
-  }, []);
+  }, [loadProfile]);
 
-  async function save(next) {
-    // make sure we never leave loading stuck
+  const saveProfile = useCallback(async (profileData) => {
     setLoading(true);
+    setError(null);
     try {
-      const updated = await saveProfileApi(next);
+      const updated = await saveProfileApi(profileData);
       setProfile(updated);
       return updated;
-    } catch (e) {
-      console.error('[profile] save error:', e);
-      throw e;
+    } catch (err) {
+      console.error('Profile save error:', err);
+      setError(err.message || 'Failed to save profile');
+      throw err;
     } finally {
       setLoading(false);
     }
-  }
+  }, []);
 
-  async function uploadAvatar(file) {
+  const uploadAvatar = useCallback(async (file) => {
     setLoading(true);
+    setError(null);
     try {
       const url = await uploadAvatarFile(file);
-      const updated = await save({ display_name: profile?.display_name || 'User', avatar_url: url });
+      const updated = await saveProfile({ 
+        display_name: profile?.display_name || 'User', 
+        avatar_url: url 
+      });
       return updated;
+    } catch (err) {
+      setError(err.message || 'Failed to upload avatar');
+      throw err;
     } finally {
       setLoading(false);
     }
-  }
+  }, [profile?.display_name, saveProfile]);
 
-  const value = { profile, loading, setProfile, save, uploadAvatar };
-  return <ProfileContext.Provider value={value}>{children}</ProfileContext.Provider>;
+  const contextValue = useMemo(() => ({
+    profile,
+    loading,
+    error,
+    saveProfile,
+    uploadAvatar,
+  }), [profile, loading, error, saveProfile, uploadAvatar]);
+
+  return <ProfileContext.Provider value={contextValue}>{children}</ProfileContext.Provider>;
 }
 
 export function useProfile() {
