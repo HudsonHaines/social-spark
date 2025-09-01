@@ -151,10 +151,45 @@ export async function createDeckShare(deckId, { days = 7 } = {}) {
 }
 
 export async function revokeDeckShare(token) {
-  const { error } = await supabase
-    .from("deck_shares")
-    .update({ is_revoked: true })
-    .eq("token", token);
-  if (error) throw error;
-  return true;
+  if (!validators.nonEmptyString(token)) {
+    throw handleSupabaseError(new Error('Valid share token is required'), { token });
+  }
+  
+  return executeSupabaseQuery(
+    () => supabase
+      .from("deck_shares")
+      .update({ 
+        is_revoked: true, 
+        revoked_at: new Date().toISOString() 
+      })
+      .eq("token", token),
+    { operation: 'revokeDeckShare', token }
+  ).then(() => true);
 }
+
+// Get deck share info
+export async function getDeckShareInfo(token) {
+  if (!validators.nonEmptyString(token)) {
+    throw handleSupabaseError(new Error('Valid share token is required'), { token });
+  }
+  
+  return executeSupabaseQuery(
+    () => supabase
+      .from("deck_shares")
+      .select(`
+        token,
+        expires_at,
+        is_revoked,
+        created_at,
+        share_count,
+        max_shares,
+        decks!inner(id, title, user_id)
+      `)
+      .eq("token", token)
+      .single(),
+    { operation: 'getDeckShareInfo', token }
+  ).then(result => result.data);
+}
+
+// Export validation helpers for use in components
+export { validateDeckId, validateUserId, validatePostData, validateDeckTitle };
