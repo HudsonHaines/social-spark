@@ -8,6 +8,7 @@ export default function EditorPresentMode({
   posts = [], // array of posts to present
   initialIndex = 0,
   onClose,
+  showPlatformTags = true, // NEW: show platform tags above posts
 }) {
   const [currentIndex, setCurrentIndex] = useState(initialIndex);
 
@@ -51,24 +52,42 @@ export default function EditorPresentMode({
     );
   }
 
+  // Get platform display info
+  const platform = currentPost.platform || 'facebook';
+  const platformDisplay = platform === 'instagram' ? 'Instagram' : 'Facebook';
+  const platformColor = platform === 'instagram' 
+    ? 'bg-gradient-to-r from-purple-500 via-pink-500 to-orange-400' 
+    : 'bg-blue-600';
+
   return (
     <div className="h-full flex flex-col items-center justify-center bg-app-surface p-4">
       {/* Progress indicator */}
       {posts.length > 1 && (
-        <div className="mb-4 text-sm text-app-muted">
+        <div className="mb-2 text-sm text-app-muted">
           {currentIndex + 1} / {posts.length}
         </div>
       )}
 
-      {/* Main preview */}
-      <div className="flex-1 flex items-center justify-center w-full max-w-none">
-        <RightPreview
-          post={currentPost}
-          setPost={() => {}} // Read-only in present mode
-          mode="present"
-          clamp={{ maxVmin: 68, maxPx: 560 }} // Match ShareViewer sizing
-          showExport={false} // Hide export button in present mode
-        />
+      {/* Platform tag */}
+      {showPlatformTags && (
+        <div className="mb-4">
+          <span className={`inline-block px-3 py-1 rounded-full text-white text-xs font-medium ${platformColor}`}>
+            {platformDisplay}
+          </span>
+        </div>
+      )}
+
+      {/* Main preview with dynamic sizing */}
+      <div className="flex-1 flex items-center justify-center w-full max-w-none overflow-hidden px-4">
+        <div className="w-full h-full flex items-center justify-center">
+          <RightPreview
+            post={currentPost}
+            setPost={() => {}} // Read-only in present mode
+            mode="present"
+            clamp={null} // Let RightPreview handle dynamic sizing
+            showExport={false} // Hide export button in present mode
+          />
+        </div>
       </div>
 
       {/* Navigation controls */}

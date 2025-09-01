@@ -11,7 +11,6 @@ import {
 import { ensurePostShape } from "../data/postShape";
 import {
   Trash2,
-  Plus,
   Play,
   ArrowLeft,
   Image as ImageIcon,
@@ -25,7 +24,7 @@ const cx = (...a) => a.filter(Boolean).join(" ");
 
 export default function DecksPage({
   userId,
-  currentPost,
+  currentPost, // FIXED: Made optional - when null, hide "Add current post" button
   onBack,
   onPresent, // (deckId) => void
   onLoadToEditor, // optional: (post) => void
@@ -139,16 +138,26 @@ export default function DecksPage({
     }
   }
 
+  // FIXED: Better error handling for share link creation
   async function handleShare() {
     if (!activeDeck) return;
     try {
       const token = await createDeckShare(activeDeck.id, { days: 7 });
       const url = `${window.location.origin}/s/${encodeURIComponent(token)}`;
-      await navigator.clipboard.writeText(url);
-      alert("Share link copied");
+      
+      // Try to copy to clipboard
+      if (navigator.clipboard && window.isSecureContext) {
+        await navigator.clipboard.writeText(url);
+        alert(`Share link copied to clipboard!\n\nURL: ${url}\n\nNote: Make sure your app has a route handler for /s/:token`);
+      } else {
+        // Fallback: show the URL in a prompt for manual copying
+        prompt("Copy this share link:", url);
+      }
+      
+      console.log("Share link created:", url);
     } catch (e) {
-      console.error(e);
-      alert("Could not create share link.");
+      console.error("Share link error:", e);
+      alert(`Could not create share link. Error: ${e.message}`);
     }
   }
 
@@ -181,20 +190,23 @@ export default function DecksPage({
             className="btn-outline"
             disabled={!activeDeck}
             onClick={handleShare}
-            title="Create a public preview link"
+            title="Create a public preview link (requires /s/:token route)"
           >
             <LinkIcon className="w-4 h-4 mr-1" />
             Share
           </button>
-          <button
-            className="btn-outline"
-            disabled={!activeDeck || !currentPost}
-            onClick={handleAddCurrent}
-            title="Add the current editor post to this deck"
-          >
-            <Plus className="w-4 h-4 mr-1" />
-            Add current post
-          </button>
+          {/* FIXED: Only show "Add current post" button when currentPost is provided */}
+          {currentPost && (
+            <button
+              className="btn-outline"
+              disabled={!activeDeck}
+              onClick={handleAddCurrent}
+              title="Add the current editor post to this deck"
+            >
+              <Plus className="w-4 h-4 mr-1" />
+              Add current post
+            </button>
+          )}
           <button
             className="btn-outline"
             disabled={!activeDeck}
@@ -291,7 +303,7 @@ export default function DecksPage({
               <div className="p-4 text-sm text-app-muted">Pick a deck</div>
             ) : items.length === 0 ? (
               <div className="p-4 text-sm text-app-muted">
-                This deck has no posts. Use Add current post.
+                This deck has no posts. Create posts in the editor and use "Save to deck" to add them.
               </div>
             ) : (
               <ul className="p-3 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">

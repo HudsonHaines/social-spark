@@ -22,7 +22,11 @@ export const emptyPost = {
   muted: true,
   playing: false,
   activeIndex: 0,
-  fbSquare: true,
+  fbAspectRatio: "1:1",      // "1:1" | "4:5" | "9:16" | "16:9" | "1.91:1" for Facebook
+  fbAdFormat: "feed-1:1",    // Combined format like "feed-1:1", "story-9:16", etc.
+  fbAdType: "feed",          // "feed" | "video" | "story" | "reels" | etc.
+  igAdFormat: "feed-1:1",    // Instagram ad format like "feed-1:1", "story-9:16", etc.
+  igAdType: "feed",          // "feed" | "story" | "reels" | "explore" | "shop" | "carousel"
   link: { ...emptyLink },
   brand: { ...emptyBrand },
   metrics: { ...emptyMetrics },
@@ -48,7 +52,7 @@ export function ensurePostShape(p) {
   const incomingMedia = Array.isArray(src.media) ? src.media.filter(Boolean).slice(0, 5) : [];
   base.media = incomingMedia;
 
-  // mediaMeta – normalize to same length as media
+  // mediaMeta — normalize to same length as media
   const srcMeta = Array.isArray(src.mediaMeta) ? src.mediaMeta : [];
   const normalizedMeta = [];
   for (let i = 0; i < base.media.length; i++) {
@@ -65,7 +69,25 @@ export function ensurePostShape(p) {
   base.activeIndex = Number.isFinite(src.activeIndex)
     ? Math.max(0, Math.min(src.activeIndex, (base.media.length || 1) - 1))
     : 0;
-  base.fbSquare = src.fbSquare ?? true;
+
+  // Handle both old fbSquare and new fbAspectRatio for backward compatibility
+  const validAspectRatios = ["1:1", "4:5", "9:16", "16:9", "1.91:1"];
+  if (validAspectRatios.includes(src.fbAspectRatio)) {
+    base.fbAspectRatio = src.fbAspectRatio;
+  } else if (src.fbSquare !== undefined) {
+    // Migrate old fbSquare to new fbAspectRatio
+    base.fbAspectRatio = src.fbSquare ? "1:1" : "16:9";
+  } else {
+    base.fbAspectRatio = "1:1"; // default
+  }
+
+  // Handle new Facebook ad format fields
+  base.fbAdFormat = typeof src.fbAdFormat === "string" ? src.fbAdFormat : "feed-1:1";
+  base.fbAdType = typeof src.fbAdType === "string" ? src.fbAdType : "feed";
+
+  // Handle Instagram ad format fields
+  base.igAdFormat = typeof src.igAdFormat === "string" ? src.igAdFormat : "feed-1:1";
+  base.igAdType = typeof src.igAdType === "string" ? src.igAdType : "feed";
 
   const link = src.link && typeof src.link === "object" ? src.link : {};
   base.link = {

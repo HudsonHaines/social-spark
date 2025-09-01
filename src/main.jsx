@@ -1,5 +1,5 @@
 // src/main.jsx
-import React from "react";
+import React, { Suspense, useEffect, useMemo, useState } from "react";
 import ReactDOM from "react-dom/client";
 import "./index.css";
 
@@ -8,17 +8,42 @@ import { AuthProvider } from "./auth/AuthProvider.jsx";
 import AuthGate from "./auth/AuthGate.jsx";
 import { ProfileProvider } from "./profile/ProfileProvider.jsx";
 
-import ShareViewer from "./share/ShareViewer.jsx";
+// Lazy load ShareViewer for /s/:token
+const ShareViewer = React.lazy(() => import("./share/ShareViewer.jsx"));
 
 import { supabase } from "./lib/supabaseClient";
 if (import.meta.env.DEV) window.supabase = supabase;
 
-function Root() {
-  const path = window.location.pathname;
-  if (path.startsWith("/s/")) {
-    const token = decodeURIComponent(path.slice(3));
-    return <ShareViewer token={token} />;
+// Simple client router: handles /s/:token and default app
+function useRoute() {
+  const [path, setPath] = useState(() => window.location.pathname);
+
+  useEffect(() => {
+    const onPop = () => setPath(window.location.pathname);
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
+  }, []);
+
+  // match /s/<token> (no extra slashes)
+  const shareToken = useMemo(() => {
+    const m = path.match(/^\/s\/([^/]+)\/?$/);
+    return m ? decodeURIComponent(m[1]) : null;
+  }, [path]);
+
+  return { shareToken };
+}
+
+function Router() {
+  const { shareToken } = useRoute();
+
+  if (shareToken) {
+    return (
+      <Suspense fallback={<div className="p-6 text-sm text-app-muted">Loading…</div>}>
+        <ShareViewer token={shareToken} />
+      </Suspense>
+    );
   }
+
   return (
     <AuthProvider>
       <ProfileProvider>
@@ -32,6 +57,6 @@ function Root() {
 
 ReactDOM.createRoot(document.getElementById("root")).render(
   <React.StrictMode>
-    <Root />
+    <Router />
   </React.StrictMode>
 );
