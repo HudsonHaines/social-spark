@@ -1,5 +1,5 @@
 // src/hooks/useExportStability.js
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import * as htmlToImage from "html-to-image";
 
 // Wait for all <img> elements in a container to load (or error)
@@ -12,18 +12,34 @@ async function waitForImages(containerElement, timeoutMs = 8000) {
 
   await new Promise((resolve) => {
     let done = 0;
-    const maybeDone = () => { done += 1; if (done === pending.length) resolve(); };
-    const timer = setTimeout(() => resolve(), timeoutMs); // do not hang forever
+    const cleanup = [];
+    const maybeDone = () => { 
+      done += 1; 
+      if (done === pending.length) {
+        cleanup.forEach(fn => fn());
+        resolve(); 
+      }
+    };
+    
+    const timer = setTimeout(() => {
+      cleanup.forEach(fn => fn());
+      resolve();
+    }, timeoutMs);
+    
+    cleanup.push(() => clearTimeout(timer));
 
     pending.forEach(img => {
-      const onLoad = () => { img.removeEventListener("load", onLoad); maybeDone(); };
-      const onErr  = () => { img.removeEventListener("error", onErr); maybeDone(); };
-      img.addEventListener("load", onLoad);
-      img.addEventListener("error", onErr);
+      const onLoad = () => maybeDone();
+      const onErr = () => maybeDone();
+      
+      img.addEventListener("load", onLoad, { once: true });
+      img.addEventListener("error", onErr, { once: true });
+      
+      cleanup.push(() => {
+        img.removeEventListener("load", onLoad);
+        img.removeEventListener("error", onErr);
+      });
     });
-
-    // best effort cleanup when promise resolves
-    void timer;
   });
 }
 
@@ -32,6 +48,7 @@ export function useExportStability() {
   const [imagesReady, setImagesReady] = useState(false);
   const nodeRef = useRef(null);
   const unsubsRef = useRef([]);
+  const timeoutRef = useRef(null);
 
   const computeReady = useCallback((node) => {
     if (!node) return false;
@@ -75,20 +92,43 @@ export function useExportStability() {
       // small delay to ensure layout paints
       await new Promise(r => setTimeout(r, 100));
 
+      // Dynamic pixel ratio based on content size for better scaling
+      const rect = node.getBoundingClientRect();
+      const isLarge = rect.width > 800 || rect.height > 800;
+      const pixelRatio = isLarge ? 1.5 : 2; // Reduce pixel ratio for large content
+
       const dataUrl = await htmlToImage.toPng(node, {
-        pixelRatio: 2,
+        pixelRatio,
         cacheBust: true,
         quality: 1,
         backgroundColor: "#ffffff",
-        style: { transform: "scale(1)", transformOrigin: "top left" },
+        style: { 
+          transform: "scale(1)", 
+          transformOrigin: "top left",
+          // Ensure consistent rendering across different post sizes
+          boxSizing: "border-box"
+        },
+        // Improve rendering for complex layouts
+        skipFonts: false,
+        preferredFontFormat: 'woff2',
       });
 
+      // More efficient download method
       const link = document.createElement("a");
       link.href = dataUrl;
       link.download = filename;
+      link.style.display = 'none';
+      
       document.body.appendChild(link);
       link.click();
-      document.body.removeChild(link);
+      
+      // Cleanup with small delay to ensure download starts
+      setTimeout(() => {
+        document.body.removeChild(link);
+        // Revoke data URL to free memory
+        URL.revokeObjectURL(dataUrl);
+      }, 100);
+      
       return true;
     } catch (err) {
       console.error("PNG export failed:", err);
@@ -99,6 +139,21 @@ export function useExportStability() {
       setImagesReady(computeReady(nodeRef.current));
     }
   }, [isExporting, computeReady]);
+
+  // Cleanup effect
+  useEffect(() => {
+    return () => {
+      // Clear any pending timeouts
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+      }
+      // Clean up all event listeners
+      unsubsRef.current.forEach(fn => { 
+        try { fn(); } catch {} 
+      });
+      unsubsRef.current = [];
+    };
+  }, []);
 
   return { isExporting, imagesReady, exportAsPng, attachNode };
 }
