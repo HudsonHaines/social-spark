@@ -192,4 +192,4 @@ export async function getDeckShareInfo(token) {
 }
 
 // Export validation helpers for use in components
-export { validateDeckId, validateUserId, validatePostData, validateDeckTitle };
+export { validateDeckId, validateUserId };

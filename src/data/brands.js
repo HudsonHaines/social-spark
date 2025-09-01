@@ -2,7 +2,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { supabase } from "../lib/supabaseClient";
 import { sanitizeBrandInput, validateBrandForm } from "./brandShape";
-import { SupabaseCache, OptimisticUpdates, CacheStrategy } from "../lib/supabaseCache";
+// import { SupabaseCache, OptimisticUpdates, CacheStrategy } from "../lib/supabaseCache";
 
 // Legacy function wrapper - use sanitizeBrandInput from brandShape instead
 function sanitizeBrand(data = {}) {
@@ -21,17 +21,14 @@ export async function fetchBrands(userId) {
   if (!userId) return [];
   if (!supabase) throw new Error("Supabase client is undefined");
 
-  return SupabaseCache.select({
-    query: supabase
-      .from("brands")
-      .select("*")
-      .eq("user_id", userId)
-      .order("created_at", { ascending: false }),
-    table: 'brands',
-    filters: { user_id: userId },
-    ttl: 10 * 60 * 1000, // 10 minutes TTL for brands
-    strategy: CacheStrategy.CACHE_FIRST,
-  });
+  const { data, error } = await supabase
+    .from("brands")
+    .select("*")
+    .eq("user_id", userId)
+    .order("created_at", { ascending: false });
+  
+  if (error) throw error;
+  return data || [];
 }
 
 export async function upsertBrand(userId, brand) {
@@ -216,19 +213,14 @@ export function useBrands(userId) {
         
         const saved = await upsertBrand(userId, brandInput);
         
-        // Invalidate cache and update optimistically
-        SupabaseCache.invalidateTable('brands');
-        
-        // Optimistic update
+        // Update brand list optimistically
         setBrands((prev) => {
           const idx = prev.findIndex((b) => b.id === saved.id);
           if (idx === -1) {
-            // New brand - add to list optimistically
-            OptimisticUpdates.addToList('brands', { user_id: userId }, saved);
+            // New brand - add to list
             return [saved, ...prev];
           }
-          // Updated brand - update optimistically
-          OptimisticUpdates.updateRecord('brands', saved.id, saved);
+          // Updated brand - update in list
           const next = prev.slice();
           next[idx] = saved;
           return next;
@@ -256,11 +248,7 @@ export function useBrands(userId) {
       try {
         await deleteBrand(userId, id);
         
-        // Invalidate cache and update optimistically
-        SupabaseCache.invalidateTable('brands');
-        OptimisticUpdates.removeFromList('brands', { user_id: userId }, id);
-        
-        // Optimistic update
+        // Update brand list optimistically
         setBrands((prev) => prev.filter((b) => b.id !== id));
         return true;
       } catch (e) {
@@ -281,16 +269,13 @@ export function useBrands(userId) {
     setError("");
     try {
       // Force fresh data on reload
-      const brands = await SupabaseCache.select({
-        query: supabase
-          .from("brands")
-          .select("*")
-          .eq("user_id", userId)
-          .order("created_at", { ascending: false }),
-        table: 'brands',
-        filters: { user_id: userId },
-        strategy: CacheStrategy.NETWORK_FIRST,
-      });
+      const { data: brands, error } = await supabase
+        .from("brands")
+        .select("*")
+        .eq("user_id", userId)
+        .order("created_at", { ascending: false });
+      
+      if (error) throw error;
       setBrands(brands);
     } catch (e) {
       console.error("[useBrands] reload error:", e);

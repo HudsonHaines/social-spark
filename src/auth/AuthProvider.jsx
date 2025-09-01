@@ -99,5 +99,5 @@ const AuthProvider = memo(function AuthProvider({ children }) {
   );
 });
 
-export { AuthProvider };
 export default AuthProvider;
+export { AuthProvider };

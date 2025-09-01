@@ -1,6 +1,5 @@
 import { supabase } from '../lib/supabaseClient';
-import { executeSupabaseQuery, handleSupabaseError, validators, withRetry } from '../lib/supabaseUtils';
-import { SupabaseCache, CacheStrategy } from '../lib/supabaseCache';
+import { handleSupabaseError, withRetry, validators } from '../lib/supabaseUtils';
 
 export async function getCurrentUser() {
   try {
@@ -20,23 +19,22 @@ export async function fetchProfile() {
   const user = await getCurrentUser();
   if (!user) return null;
 
-  return SupabaseCache.selectSingle({
-    query: supabase
+  try {
+    const { data, error } = await supabase
       .from('profiles')
       .select('*')
       .eq('id', user.id)
-      .single(),
-    table: 'profiles',
-    id: user.id,
-    ttl: 15 * 60 * 1000, // 15 minutes TTL for profiles
-    strategy: CacheStrategy.CACHE_FIRST,
-  }).catch(error => {
+      .single();
+    
+    if (error && error.code !== 'PGRST116') throw error;
+    return data || null;
+  } catch (error) {
     // Not found is OK for profiles
     if (error.code === 'PGRST116') {
       return null;
     }
     throw handleSupabaseError(error, { operation: 'fetchProfile', userId: user.id });
-  });
+  }
 }
 
 export async function ensureProfileExists() {
@@ -70,24 +68,21 @@ export async function ensureProfileExists() {
     avatar_url: (avatarUrl && validators.url(avatarUrl)) ? avatarUrl : null,
   };
 
-  return executeSupabaseQuery(
-    () => supabase
+  try {
+    const { data, error } = await supabase
       .from('profiles')
       .upsert({ 
         ...base, 
-        updated_at: new Date().toISOString(),
-        last_sign_in_at: new Date().toISOString()
+        updated_at: new Date().toISOString()
       })
       .select('*')
-      .single(),
-    { operation: 'ensureProfileExists', userId: user.id }
-  ).then(result => {
-    // Update cache with new profile data
-    const profile = result.data;
-    const cacheKey = `supabase_cache_:profiles:select_single:{"id":"${user.id}"}`;
-    // This would ideally use the cache API, but avoiding circular imports
-    return profile;
-  });
+      .single();
+
+    if (error) throw error;
+    return data;
+  } catch (error) {
+    throw handleSupabaseError(error, { operation: 'ensureProfileExists', userId: user.id });
+  }
 }
 
 export async function saveProfile({ display_name, avatar_url }) {
@@ -122,20 +117,19 @@ export async function saveProfile({ display_name, avatar_url }) {
     updated_at: new Date().toISOString(),
   };
 
-  return executeSupabaseQuery(
-    () => supabase
+  try {
+    const { data, error } = await supabase
       .from('profiles')
       .update(sanitizedData)
       .eq('id', user.id)
       .select('*')
-      .single(),
-    { operation: 'saveProfile', userId: user.id }
-  ).then(result => {
-    // Invalidate profile cache
-    const cacheKey = `supabase_cache_:profiles:select_single:{"id":"${user.id}"}`;
-    // This would ideally use SupabaseCache.invalidate, but avoiding circular imports
-    return result.data;
-  });
+      .single();
+
+    if (error) throw error;
+    return data;
+  } catch (error) {
+    throw handleSupabaseError(error, { operation: 'saveProfile', userId: user.id });
+  }
 }
 
 export async function uploadAvatarFile(file) {
@@ -164,23 +158,6 @@ export async function uploadAvatarFile(file) {
       fileSize: file.size,
       maxSize 
     });
-  }
-
-  // Validate file dimensions (if it's an image)
-  const maxDimension = 2048;
-  if (file.type.startsWith('image/')) {
-    try {
-      const dimensions = await getImageDimensions(file);
-      if (dimensions.width > maxDimension || dimensions.height > maxDimension) {
-        throw handleSupabaseError(new Error(`Image dimensions must be ${maxDimension}x${maxDimension} pixels or less`), {
-          operation: 'uploadAvatar',
-          dimensions
-        });
-      }
-    } catch (error) {
-      if (error.name === 'SupabaseError') throw error;
-      console.warn('Could not validate image dimensions:', error);
-    }
   }
 
   // Sanitize file name
@@ -222,24 +199,4 @@ export async function uploadAvatarFile(file) {
   } catch (error) {
     throw handleSupabaseError(error, { operation: 'uploadAvatar', fileName: sanitizedFileName });
   }
-}
-
-// Helper function to get image dimensions
-function getImageDimensions(file) {
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    const url = URL.createObjectURL(file);
-    
-    img.onload = () => {
-      URL.revokeObjectURL(url);
-      resolve({ width: img.width, height: img.height });
-    };
-    
-    img.onerror = () => {
-      URL.revokeObjectURL(url);
-      reject(new Error('Could not load image to check dimensions'));
-    };
-    
-    img.src = url;
-  });
 }

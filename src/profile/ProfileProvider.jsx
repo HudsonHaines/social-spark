@@ -177,8 +177,8 @@ const ProfileProvider = memo(function ProfileProvider({ children }) {
   return <ProfileContext.Provider value={contextValue}>{children}</ProfileContext.Provider>;
 });
 
-export { ProfileProvider };
 export default ProfileProvider;
+export { ProfileProvider };
 
 export function useProfile() {
   const ctx = useContext(ProfileContext);

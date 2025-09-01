@@ -4,9 +4,9 @@ import ReactDOM from "react-dom/client";
 import "./index.css";
 
 import App from "./App.jsx";
-import { AuthProvider } from "./auth/AuthProvider.jsx";
+import AuthProvider from "./auth/AuthProvider.jsx";
 import AuthGate from "./auth/AuthGate.jsx";
-import { ProfileProvider } from "./profile/ProfileProvider.jsx";
+import ProfileProvider from "./profile/ProfileProvider.jsx";
 
 // Lazy load ShareViewer for /s/:token
 const ShareViewer = React.lazy(() => import("./share/ShareViewer.jsx"));
