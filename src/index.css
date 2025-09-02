@@ -3,6 +3,17 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Custom utilities for scrollbar hiding */
+@layer utilities {
+  .scrollbar-hide {
+    -ms-overflow-style: none;  /* IE and Edge */
+    scrollbar-width: none;  /* Firefox */
+  }
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;  /* Chrome, Safari and Opera */
+  }
+}
+
 /* =========================
    Base tokens and resets
    ========================= */

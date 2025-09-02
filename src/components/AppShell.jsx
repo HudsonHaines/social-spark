@@ -1,6 +1,7 @@
 // src/components/AppShell.jsx
 import React from "react";
 import TopBar from "./TopBar";
+import DeckStrip from "./DeckStrip";
 import BrandManager from "../brands/BrandManager";
 import DeckManager from "../decks/DeckManager";
 
@@ -8,10 +9,12 @@ const cx = (...a) => a.filter(Boolean).join(" ");
 
 export default function AppShell({
   topBarProps = {},
+  deckStripProps = {},
   leftPanel = null,
   rightPreview = null,
   modals = {},
   singleColumn = false,
+  showDeckStrip = false,
 }) {
   const {
     brandManagerOpen = false,
@@ -28,6 +31,8 @@ export default function AppShell({
   return (
     <div className="app-shell">
       <TopBar {...topBarProps} />
+      
+      {showDeckStrip && <DeckStrip {...deckStripProps} />}
 
       <main
         className={cx(

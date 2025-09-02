@@ -6,13 +6,10 @@ import {
   Video as VideoIcon,
   Trash2,
   Film,
-  Eye,
-  Copy,
   ChevronDown,
   ChevronRight,
   Save,
   Download,
-  Play,
 } from "lucide-react";
 import { useBrands } from "../data/brands";
 
@@ -155,16 +152,9 @@ const LeftPanel = memo(function LeftPanel(props) {
     handleVideoFile,
     clearVideo,
     removeImageAt,
-    // deck operations - direct props from App.jsx
-    deck = [],
-    loadFromDeck = () => {},
-    deleteFromDeck = () => {},
-    duplicateToDeck = () => {},
-    startPresentingDeck = () => {},
+    // deck operations
     saveToDeck = () => {},
     openDeckPicker = () => {},
-    addToDeck = () => {},
-    loadingDeck = false,
     // brand manager
     openBrandManager,
     // export functionality
@@ -223,13 +213,13 @@ const LeftPanel = memo(function LeftPanel(props) {
   // Sticky Actions Bar
   const ActionsBar = () => (
     <div className="bg-white border-t border-gray-200 p-4 flex-shrink-0">
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-2 gap-3">
         <button
           onClick={() => openDeckPicker?.()}
           className="flex flex-col items-center gap-1 p-3 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
         >
           <Save size={16} className="text-gray-600" />
-          <span className="text-xs text-gray-700">Save</span>
+          <span className="text-xs text-gray-700">Save to Deck</span>
         </button>
         
         <button
@@ -253,15 +243,6 @@ const LeftPanel = memo(function LeftPanel(props) {
               <span className="text-xs">Export</span>
             </>
           )}
-        </button>
-        
-        <button
-          onClick={() => startPresentingDeck?.()}
-          disabled={!deck?.length}
-          className="flex flex-col items-center gap-1 p-3 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50"
-        >
-          <Play size={16} className="text-gray-600" />
-          <span className="text-xs text-gray-700">Present</span>
         </button>
       </div>
     </div>
@@ -466,137 +447,6 @@ const LeftPanel = memo(function LeftPanel(props) {
                 </div>
               </div>
             </CollapsibleSection>
-          )}
-
-          {/* Deck Preview - Always show if items exist */}
-          {deck?.length > 0 && (
-            <WorkflowStep title={`🎬 Your Deck (${deck.length} post${deck.length === 1 ? '' : 's'})`}>
-              <div className="space-y-3">
-                {/* Thumbnail Grid */}
-                <div className="grid grid-cols-3 gap-2">
-                  {deck.slice(0, 6).map((d, index) => (
-                    <div 
-                      key={d.id}
-                      className="relative group cursor-pointer"
-                      onClick={() => loadFromDeck(d.id)}
-                    >
-                      {/* Thumbnail */}
-                      <div className="aspect-square bg-gradient-to-br from-gray-100 to-gray-200 rounded-lg overflow-hidden border border-gray-200 hover:border-blue-300 transition-all">
-                        {d.post?.media?.length > 0 ? (
-                          <img 
-                            src={d.post.media[0]} 
-                            alt="" 
-                            className="w-full h-full object-cover"
-                          />
-                        ) : d.post?.videoSrc ? (
-                          <div className="w-full h-full flex items-center justify-center bg-gray-800">
-                            <VideoIcon className="w-6 h-6 text-white" />
-                          </div>
-                        ) : (
-                          <div className="w-full h-full flex items-center justify-center">
-                            <div className="text-center">
-                              <ImageIcon className="w-4 h-4 mx-auto mb-1 text-gray-400" />
-                              <div className="text-xs text-gray-500 leading-tight">
-                                {d.post?.caption?.slice(0, 20) || 'Text post'}
-                              </div>
-                            </div>
-                          </div>
-                        )}
-                        
-                        {/* Platform Badge */}
-                        <div className="absolute top-1 left-1">
-                          <div className={cx(
-                            "w-4 h-4 rounded-full flex items-center justify-center text-xs font-bold text-white",
-                            d.post?.platform === "facebook" ? "bg-blue-500" : "bg-pink-500"
-                          )}>
-                            {d.post?.platform === "facebook" ? "f" : "📷"}
-                          </div>
-                        </div>
-
-                        {/* Index Number */}
-                        <div className="absolute top-1 right-1 bg-black/70 text-white text-xs rounded-full w-4 h-4 flex items-center justify-center">
-                          {index + 1}
-                        </div>
-
-                        {/* Hover Actions */}
-                        <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                          <div className="flex gap-1">
-                            <button 
-                              className="bg-white/90 hover:bg-white text-gray-700 rounded-full p-1.5 transition-colors"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                loadFromDeck(d.id);
-                              }}
-                              title="Load this post"
-                            >
-                              <Eye className="w-3 h-3" />
-                            </button>
-                            <button 
-                              className="bg-white/90 hover:bg-white text-gray-700 rounded-full p-1.5 transition-colors"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                duplicateToDeck?.(d.id);
-                              }}
-                              title="Duplicate"
-                            >
-                              <Copy className="w-3 h-3" />
-                            </button>
-                            <button 
-                              className="bg-red-500/90 hover:bg-red-500 text-white rounded-full p-1.5 transition-colors"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                deleteFromDeck(d.id);
-                              }}
-                              title="Delete"
-                            >
-                              <Trash2 className="w-3 h-3" />
-                            </button>
-                          </div>
-                        </div>
-                      </div>
-                      
-                      {/* Post Info */}
-                      <div className="mt-1 text-xs text-gray-600">
-                        <div className="truncate">
-                          {d.post?.brand?.name || 'Untitled'}
-                        </div>
-                        <div className="text-gray-400">
-                          {new Date(d.createdAt).toLocaleDateString()}
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                  
-                  {/* Show More Indicator */}
-                  {deck.length > 6 && (
-                    <div className="aspect-square bg-gray-100 rounded-lg border-2 border-dashed border-gray-300 flex items-center justify-center">
-                      <div className="text-center">
-                        <div className="text-lg font-bold text-gray-400">+{deck.length - 6}</div>
-                        <div className="text-xs text-gray-500">more</div>
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                {/* Quick Actions */}
-                <div className="flex gap-2 pt-2 border-t border-gray-200">
-                  <button
-                    onClick={() => startPresentingDeck?.()}
-                    className="flex items-center gap-2 px-3 py-2 bg-green-500 text-white rounded-lg text-sm font-medium hover:bg-green-600 transition-colors flex-1 justify-center"
-                  >
-                    <Play className="w-4 h-4" />
-                    Present Deck
-                  </button>
-                  <button
-                    onClick={() => addToDeck?.()}
-                    className="px-3 py-2 border border-gray-300 rounded-lg text-sm font-medium hover:bg-gray-50 transition-colors"
-                    title="Add current post to this deck"
-                  >
-                    <Save className="w-4 h-4" />
-                  </button>
-                </div>
-              </div>
-            </WorkflowStep>
           )}
 
           {/* Collapsible Advanced Sections */}

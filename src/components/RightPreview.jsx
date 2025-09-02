@@ -2,6 +2,7 @@
 import React, { forwardRef, useCallback, useEffect, useMemo } from "react";
 import { ensurePostShape } from "../data/postShape";
 import { useExportStability } from "../hooks/useExportStability";
+import InstagramPost from "./InstagramPost";
 
 const cx = (...a) => a.filter(Boolean).join(" ");
 
@@ -132,14 +133,19 @@ const RightPreview = forwardRef(function RightPreview(
             className="mx-auto flex-shrink-0" 
             style={wrapperStyle}
           >
+            {normalizedPost.platform === "instagram" ? (
+              <InstagramPost 
+                post={normalizedPost}
+                previewRef={previewRef}
+                videoRef={videoRef}
+                aspectClass={aspectClass}
+              />
+            ) : (
             <div ref={previewRef} className={cx(
               "bg-white overflow-hidden w-full",
               normalizedPost.platform === "facebook" ? "fb-post-container" : "card p-0"
             )}>
-              <div className={cx(
-                "flex items-center gap-3",
-                normalizedPost.platform === "facebook" ? "px-4 py-3" : "p-3"
-              )}>
+              <div className="flex items-center gap-3 px-4 py-3">
                 <div className="w-10 h-10 rounded-full bg-gray-200 overflow-hidden shrink-0">
                   {normalizedPost.brand?.profileSrc ? (
                     <img
@@ -162,33 +168,25 @@ const RightPreview = forwardRef(function RightPreview(
                         </svg>
                       </div>
                     )}
-                    {normalizedPost.platform === "facebook" && (
-                      <div className="ml-2 flex-shrink-0">
-                        <span className="text-xs text-gray-500 font-normal">Sponsored</span>
-                      </div>
-                    )}
+                    <div className="ml-2 flex-shrink-0">
+                      <span className="text-xs text-gray-500 font-normal">Sponsored</span>
+                    </div>
                   </div>
                   <div className="meta text-xs text-gray-500 truncate">
-                    {normalizedPost.platform === "instagram"
-                      ? `@${normalizedPost.brand?.username || "username"}`
-                      : "2h · 🌐"}
+                    2h · 🌐
                   </div>
                 </div>
-                {normalizedPost.platform === "facebook" && (
-                  <div className="flex-shrink-0">
-                    <button className="p-1 hover:bg-gray-100 rounded-full">
-                      <svg className="w-5 h-5 text-gray-600" fill="currentColor" viewBox="0 0 20 20">
-                        <path d="M10 6a2 2 0 110-4 2 2 0 010 4zM10 12a2 2 0 110-4 2 2 0 010 4zM10 18a2 2 0 110-4 2 2 0 010 4z" />
-                      </svg>
-                    </button>
-                  </div>
-                )}
+                <div className="flex-shrink-0">
+                  <button className="p-1 hover:bg-gray-100 rounded-full">
+                    <svg className="w-5 h-5 text-gray-600" fill="currentColor" viewBox="0 0 20 20">
+                      <path d="M10 6a2 2 0 110-4 2 2 0 010 4zM10 12a2 2 0 110-4 2 2 0 010 4zM10 18a2 2 0 110-4 2 2 0 010 4z" />
+                    </svg>
+                  </button>
+                </div>
               </div>
 
               {normalizedPost.caption ? (
-                <div className={cx(
-                  normalizedPost.platform === "facebook" ? "px-4 pb-3" : "px-3 pb-3"
-                )}>
+                <div className="px-4 pb-3">
                   <div className="whitespace-pre-wrap text-sm text-gray-900 leading-relaxed">
                     {normalizedPost.caption}
                   </div>
@@ -199,7 +197,6 @@ const RightPreview = forwardRef(function RightPreview(
                 <div
                   className={cx(
                     "relative bg-black overflow-hidden",
-                    normalizedPost.platform === "facebook" ? "border-0" : "border-t border-b bg-black/5",
                     aspectClass
                   )}
                 >
@@ -350,18 +347,9 @@ const RightPreview = forwardRef(function RightPreview(
                     </div>
                   )}
                 </div>
-              ) : (
-                <div className="px-3 py-2 border-t text-xs text-slate-500 flex items-center gap-4">
-                  {["likes", "comments", "shares", "saves", "views"].map((metricKey) =>
-                    normalizedPost.metrics?.[metricKey] ? (
-                      <span key={metricKey}>
-                        {labelForMetric(metricKey)} {formatNumber(normalizedPost.metrics[metricKey])}
-                      </span>
-                    ) : null
-                  )}
-                </div>
-              )}
+              ) : null}
             </div>
+            )}
           </div>
         </div>
       </div>

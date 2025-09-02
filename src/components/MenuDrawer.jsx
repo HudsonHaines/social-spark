@@ -7,6 +7,7 @@ export default function MenuDrawer({
   onOpenDeckManager, // go to Decks page
   onOpenBrandsPage,  // go to Brands page
   onOpenShareLinks,  // go to Share Links page
+  onOpenCreate,      // go to Create/Editor page
 }) {
   useEffect(() => {
     if (!open) return;
@@ -35,6 +36,16 @@ export default function MenuDrawer({
         </div>
 
         <nav className="p-3 space-y-1">
+          <button
+            className="w-full text-left px-3 py-2 rounded hover:bg-slate-100 font-medium"
+            onClick={() => {
+              onOpenCreate?.();
+              onClose?.();
+            }}
+          >
+            Create
+          </button>
+
           <button
             className="w-full text-left px-3 py-2 rounded hover:bg-slate-100"
             onClick={() => {

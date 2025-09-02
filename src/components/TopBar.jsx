@@ -4,15 +4,10 @@ import { Image as ImageIcon, FolderOpen, PlusSquare, Menu } from "lucide-react";
 import ProfileButton from "../profile/ProfileButton";
 
 const TopBar = memo(function TopBar({
-  mode = "create",
-  setMode = () => {},
   onExportPNG = () => {},
   onOpenMenu = () => {},
   deckActions = {},
   user = null,
-  // Add these props to handle present mode properly
-  canPresent = false,
-  onStartPresent = () => {},
   exportDisabled = false,
   loading = false,
 }) {
@@ -22,25 +17,6 @@ const TopBar = memo(function TopBar({
     openDeckPicker = () => {},
     loadingDeck = false,
   } = deckActions;
-  const handlePresentClick = useCallback(() => {
-    if (mode === "present") {
-      setMode("create");
-    } else {
-      if (canPresent) {
-        onStartPresent();
-      } else {
-        alert("No posts to present. Add posts to your deck or open a saved deck first.");
-      }
-    }
-  }, [mode, setMode, canPresent, onStartPresent]);
-
-  const handleModeChange = useCallback((newMode) => {
-    if (newMode === "present" && !canPresent) {
-      alert("No posts to present. Add posts to your deck or open a saved deck first.");
-      return;
-    }
-    setMode(newMode);
-  }, [setMode, canPresent]);
 
   return (
     <header className="border-b bg-white h-12">
@@ -56,24 +32,9 @@ const TopBar = memo(function TopBar({
           <Menu className="w-4 h-4" />
         </button>
 
-        {/* Mode tabs */}
-        <div className="tabs">
-          <button
-            className="tab"
-            aria-selected={mode === "create"}
-            onClick={() => handleModeChange("create")}
-          >
-            Create
-          </button>
-          <button
-            className="tab"
-            aria-selected={mode === "present"}
-            onClick={handlePresentClick}
-            title={mode === "present" ? "Exit present mode" : 
-                   canPresent ? "Start presenting" : "No posts to present"}
-          >
-            Present
-          </button>
+        {/* App Title */}
+        <div className="font-semibold text-gray-800">
+          Social Spark
         </div>
 
         {/* Spacer */}
@@ -91,18 +52,16 @@ const TopBar = memo(function TopBar({
             {loadingDeck || loading ? "Loading..." : "Decks"}
           </button>
 
-          {/* Only show Save to deck button in create mode */}
-          {mode === "create" && (
-            <button
-              className="btn-outline hidden sm:inline-flex"
-              onClick={openDeckPicker}
-              disabled={loadingDeck || loading}
-              title={loadingDeck || loading ? "Loading..." : "Save current post to a deck"}
-            >
-              <PlusSquare className="w-4 h-4 mr-1" />
-              {loadingDeck || loading ? "Loading..." : "Save to deck"}
-            </button>
-          )}
+          {/* Save to deck button */}
+          <button
+            className="btn-outline hidden sm:inline-flex"
+            onClick={openDeckPicker}
+            disabled={loadingDeck || loading}
+            title={loadingDeck || loading ? "Loading..." : "Save current post to a deck"}
+          >
+            <PlusSquare className="w-4 h-4 mr-1" />
+            {loadingDeck || loading ? "Loading..." : "Save to deck"}
+          </button>
 
           <button 
             className="btn-outline" 

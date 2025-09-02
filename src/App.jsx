@@ -36,15 +36,9 @@ export default function App() {
   
   // App navigation state
   const [appState, setAppState] = useState({
-    mode: "create", // create | present
     page: "editor", // editor | decks | brands | sharelinks
   });
   
-  // Presentation state
-  const [presentationState, setPresentationState] = useState({
-    posts: [],
-    currentIndex: 0,
-  });
 
   // UI modal state
   const [uiState, setUiState] = useState({
@@ -52,6 +46,8 @@ export default function App() {
     brandManagerOpen: false,
     deckManagerOpen: false,
     deckPickerOpen: false,
+    internalCheckerOpen: false,
+    checkerPosts: [],
   });
 
   // refs
@@ -235,37 +231,16 @@ export default function App() {
     setLocalDeck((d) => d.filter((x) => x.id !== id));
   }, []);
 
-  // Presentation mode handlers
-  const presentFromDecksPage = useCallback(async (deckId) => {
+  // Internal deck checker handler (repurposed from present mode)
+  const openInternalDeckChecker = useCallback(async (deckId) => {
     try {
       const rows = await listDeckItems(deckId);
       const posts = rows.map((r) => r.post_json);
-      setPresentationState({ posts, currentIndex: 0 });
-      setAppState({
-        page: "editor",
-        mode: "present",
-      });
-      if (posts.length) setPost(ensurePostShape(posts[0]));
+      setUiState(prev => ({ ...prev, internalCheckerOpen: true, checkerPosts: posts }));
     } catch (e) {
       console.error(e);
-      alert("Could not open deck.");
+      alert("Could not open deck for review.");
     }
-  }, []);
-
-  const startPresentingLocalDeck = useCallback(() => {
-    if (localDeck.length === 0) {
-      alert("Add some posts to your deck first to start presenting.");
-      return;
-    }
-    const posts = localDeck.map((d) => d.post);
-    setPresentationState({ posts, currentIndex: 0 });
-    setAppState(prev => ({ ...prev, mode: "present" }));
-    if (posts.length) setPost(ensurePostShape(posts[0]));
-  }, [localDeck]);
-
-  const exitPresentMode = useCallback(() => {
-    setAppState(prev => ({ ...prev, mode: "create" }));
-    setPresentationState({ posts: [], currentIndex: 0 });
   }, []);
 
   // Deck operations
@@ -337,34 +312,50 @@ export default function App() {
     }
   }, [exportAsPng]);
 
-  // Derived state
-  const canPresent = useMemo(() => {
-    return localDeck.length > 0;
-  }, [localDeck.length]);
-
-  const handlePresentModeToggle = useCallback(() => {
-    if (appState.mode === "present") {
-      exitPresentMode();
-    } else {
-      startPresentingLocalDeck();
-    }
-  }, [appState.mode, exitPresentMode, startPresentingLocalDeck]);
 
   return (
     <Fragment>
       <AppShell
         singleColumn={appState.page === "decks" || appState.page === "brands" || appState.page === "sharelinks"}
+        showDeckStrip={appState.page === "editor"}
         topBarProps={{
-          mode: appState.mode,
-          setMode: (mode) => setAppState(prev => ({ ...prev, mode })),
           onExportPNG: handleExportPNG,
           user: authenticatedUser,
           onOpenMenu: () => setUiState(prev => ({ ...prev, menuOpen: true })),
-          openDeckManager: () => navigateToPage("decks"),
-          openDeckPicker,
-          canPresent,
-          onStartPresent: handlePresentModeToggle,
+          deckActions: {
+            openDeckManager: () => navigateToPage("decks"),
+            openDeckPicker,
+          },
           exportDisabled: !imagesReady || isExporting,
+        }}
+        deckStripProps={{
+          deck: localDeck,
+          currentPost: post,
+          onAddToDeck: addToDeck,
+          onLoadFromDeck: loadFromDeck,
+          onDeleteFromDeck: deleteFromDeck,
+          onDuplicateToDeck: duplicateToDeck,
+          onSaveDeck: async (deckName) => {
+            const authenticatedUserId = await ensureAuthenticated();
+            if (!authenticatedUserId) return;
+            
+            try {
+              // Create new deck
+              const newDeck = await createDeck(authenticatedUserId, deckName);
+              
+              // Add all local deck items to the new deck
+              for (const item of localDeck) {
+                await addItemToDeck(newDeck.id, item.post);
+              }
+              
+              // Clear local deck after successful save
+              setLocalDeck([]);
+              alert(`Deck "${deckName}" saved successfully!`);
+            } catch (error) {
+              console.error("Failed to save deck:", error);
+              throw error; // Let DeckStrip handle the error state
+            }
+          },
         }}
         leftPanel={
           appState.page === "decks" ? (
@@ -372,7 +363,7 @@ export default function App() {
               userId={userId}
               currentPost={null}
               onBack={() => navigateToPage("editor")}
-              onPresent={presentFromDecksPage}
+              onPresent={openInternalDeckChecker}
             />
           ) : appState.page === "brands" ? (
             <BrandsPage
@@ -382,7 +373,7 @@ export default function App() {
             />
           ) : appState.page === "sharelinks" ? (
             <ShareLinksPage />
-          ) : appState.mode === "present" ? null : (
+          ) : (
             <LeftPanel
               user={authenticatedUser}
               post={post}
@@ -392,13 +383,6 @@ export default function App() {
               handleVideoFile={processVideoFile}
               clearVideo={removeVideo}
               removeImageAt={removeImageAt}
-              addToDeck={addToDeck}
-              duplicateToDeck={duplicateToDeck}
-              deck={localDeck}
-              loadFromDeck={loadFromDeck}
-              deleteFromDeck={deleteFromDeck}
-              startPresentingDeck={startPresentingLocalDeck}
-              loadingDeck={false}
               openBrandManager={() => setUiState(prev => ({ ...prev, brandManagerOpen: true }))}
               saveToDeck={saveToDeck}
               openDeckPicker={openDeckPicker}
@@ -411,21 +395,12 @@ export default function App() {
         rightPreview={
           appState.page !== "editor"
             ? null
-            : appState.mode === "present"
-            ? (
-              <EditorPresentMode
-                posts={presentationState.posts}
-                initialIndex={presentationState.currentIndex}
-                onClose={exitPresentMode}
-                showPlatformTags={true}
-              />
-            )
             : (
               <RightPreview
                 ref={previewRef}
                 post={post}
                 setPost={setPost}
-                mode={appState.mode}
+                mode="create"
                 videoRef={videoRef}
                 showExport={false}
               />
@@ -436,20 +411,13 @@ export default function App() {
           onCloseBrandManager: () => setUiState(prev => ({ ...prev, brandManagerOpen: false })),
           deckManagerOpen: uiState.deckManagerOpen,
           onCloseDeckManager: () => setUiState(prev => ({ ...prev, deckManagerOpen: false })),
-          deckManagerOnOpenForPresent: (payload) => {
-            setUiState(prev => ({ ...prev, deckManagerOpen: false }));
-            setAppState(prev => ({ ...prev, mode: "present" }));
-            if (payload?.posts?.length) {
-              setPresentationState({ posts: payload.posts, currentIndex: 0 });
-              setPost(ensurePostShape(payload.posts[0]));
-            }
-          },
         }}
       />
 
       <MenuDrawer
         open={uiState.menuOpen}
         onClose={() => setUiState(prev => ({ ...prev, menuOpen: false }))}
+        onOpenCreate={() => navigateToPage("editor")}
         onOpenDeckManager={() => navigateToPage("decks")}
         onOpenBrandsPage={() => navigateToPage("brands")}
         onOpenShareLinks={() => navigateToPage("sharelinks")}
@@ -461,6 +429,21 @@ export default function App() {
         onClose={() => setUiState(prev => ({ ...prev, deckPickerOpen: false }))}
         onPick={handlePickDeckAndSave}
       />
+
+      {/* Internal Deck Checker Modal */}
+      {uiState.internalCheckerOpen && (
+        <div className="fixed inset-0 z-50 bg-black/50">
+          <div className="h-full w-full">
+            <EditorPresentMode
+              posts={uiState.checkerPosts}
+              initialIndex={0}
+              onClose={() => setUiState(prev => ({ ...prev, internalCheckerOpen: false, checkerPosts: [] }))}
+              showPlatformTags={true}
+              isInternalMode={true}
+            />
+          </div>
+        </div>
+      )}
     </Fragment>
   );
 }
