@@ -6,7 +6,7 @@ import {
   addItemToDeck,
   deleteDeck,
   deleteDeckItem,
-  createDeckShare,
+  getOrCreateDeckShare,
 } from "../data/decks";
 import { ensurePostShape } from "../data/postShape";
 import {
@@ -201,26 +201,26 @@ export default function DecksPage({
     }
   }
 
-  // FIXED: Better error handling for share link creation
+  // Get or reuse existing share link for the deck
   async function handleShare() {
     if (!activeDeck) return;
     try {
-      const token = await createDeckShare(activeDeck.id, { days: 7 });
+      const token = await getOrCreateDeckShare(activeDeck.id, { days: 7 });
       const url = `${window.location.origin}/s/${encodeURIComponent(token)}`;
       
       // Try to copy to clipboard
       if (navigator.clipboard && window.isSecureContext) {
         await navigator.clipboard.writeText(url);
-        alert(`Share link copied to clipboard!\n\nURL: ${url}\n\nNote: Make sure your app has a route handler for /s/:token`);
+        alert(`Share link copied to clipboard!\n\nURL: ${url}\n\nThis link stays the same and updates automatically with any changes to your deck.`);
       } else {
         // Fallback: show the URL in a prompt for manual copying
         prompt("Copy this share link:", url);
       }
       
-      console.log("Share link created:", url);
+      console.log("Share link retrieved/created:", url);
     } catch (e) {
       console.error("Share link error:", e);
-      alert(`Could not create share link. Error: ${e.message}`);
+      alert(`Could not get share link. Error: ${e.message}`);
     }
   }
 

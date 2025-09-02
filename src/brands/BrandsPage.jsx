@@ -94,9 +94,9 @@ const BrandsPage = memo(function BrandsPage({
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
           />
-          <button className="btn" onClick={onOpenBrandManager}>
-            <Plus className="w-4 h-4 mr-1" />
-            New brand
+          <button className="btn px-4 whitespace-nowrap" onClick={onOpenBrandManager}>
+            <Plus className="w-4 h-4 mr-2" />
+            New Brand
           </button>
         </div>
       </div>

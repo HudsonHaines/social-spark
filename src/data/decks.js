@@ -151,6 +151,28 @@ export async function createDeckShare(deckId, { days = 7 } = {}) {
   return data.token;
 }
 
+// Get or create a share link for a deck (reuses existing non-revoked links)
+export async function getOrCreateDeckShare(deckId, { days = 7 } = {}) {
+  validateDeckId(deckId);
+  
+  try {
+    // First check if there's an existing non-revoked share link
+    const existing = await getExistingDeckShare(deckId);
+    
+    if (existing && existing.token) {
+      // Check if it's not expired
+      if (!existing.expires_at || new Date(existing.expires_at) > new Date()) {
+        return existing.token;
+      }
+    }
+    
+    // If no existing valid link, create a new one
+    return await createDeckShare(deckId, { days });
+  } catch (error) {
+    throw handleSupabaseError(error, { operation: 'getOrCreateDeckShare', deckId });
+  }
+}
+
 export async function revokeDeckShare(token) {
   if (!validators.nonEmptyString(token)) {
     throw handleSupabaseError(new Error('Valid share token is required'), { token });
@@ -169,6 +191,25 @@ export async function revokeDeckShare(token) {
     return true;
   } catch (error) {
     throw handleSupabaseError(error, { operation: 'revokeDeckShare', token });
+  }
+}
+
+// Delete a share link permanently
+export async function deleteDeckShare(token) {
+  if (!validators.nonEmptyString(token)) {
+    throw handleSupabaseError(new Error('Valid share token is required'), { token });
+  }
+  
+  try {
+    const { error } = await supabase
+      .from("deck_shares")
+      .delete()
+      .eq("token", token);
+    
+    if (error) throw error;
+    return true;
+  } catch (error) {
+    throw handleSupabaseError(error, { operation: 'deleteDeckShare', token });
   }
 }
 
@@ -197,6 +238,35 @@ export async function getDeckShareInfo(token) {
     return data;
   } catch (error) {
     throw handleSupabaseError(error, { operation: 'getDeckShareInfo', token });
+  }
+}
+
+// Get existing share link for a specific deck
+export async function getExistingDeckShare(deckId) {
+  validateDeckId(deckId);
+  
+  try {
+    const { data, error } = await supabase
+      .from("deck_shares")
+      .select(`
+        token,
+        expires_at,
+        is_revoked,
+        created_at,
+        share_count,
+        max_shares,
+        last_accessed_at
+      `)
+      .eq("deck_id", deckId)
+      .eq("is_revoked", false)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    
+    if (error) throw error;
+    return data;
+  } catch (error) {
+    throw handleSupabaseError(error, { operation: 'getExistingDeckShare', deckId });
   }
 }
 

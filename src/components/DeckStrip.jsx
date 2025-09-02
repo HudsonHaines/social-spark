@@ -102,7 +102,7 @@ const DeckStrip = memo(function DeckStrip({
   }
 
   return (
-    <div className="bg-white border-b border-gray-200 relative group">
+    <div className="bg-white relative group">
       {/* Success Message */}
       {showSuccessMessage && (
         <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-full bg-green-500 text-white px-4 py-2 rounded-lg text-sm font-medium shadow-lg z-20 animate-bounce">

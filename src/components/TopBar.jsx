@@ -1,22 +1,12 @@
 // src/components/TopBar.jsx
-import React, { memo, useCallback } from "react";
-import { Image as ImageIcon, FolderOpen, PlusSquare, Menu } from "lucide-react";
+import React, { memo } from "react";
+import { Menu } from "lucide-react";
 import ProfileButton from "../profile/ProfileButton";
 
 const TopBar = memo(function TopBar({
-  onExportPNG = () => {},
   onOpenMenu = () => {},
-  deckActions = {},
   user = null,
-  exportDisabled = false,
-  loading = false,
 }) {
-  // Destructure deck operations with defaults
-  const {
-    openDeckManager = () => {},
-    openDeckPicker = () => {},
-    loadingDeck = false,
-  } = deckActions;
 
   return (
     <header className="border-b bg-white h-12">
@@ -42,39 +32,6 @@ const TopBar = memo(function TopBar({
 
         {/* Right cluster */}
         <div className="flex items-center gap-2">
-          <button
-            className="btn-outline hidden sm:inline-flex"
-            onClick={openDeckManager}
-            disabled={loadingDeck || loading}
-            title={loadingDeck || loading ? "Loading..." : "Open Deck Manager"}
-          >
-            <FolderOpen className="w-4 h-4 mr-1" />
-            {loadingDeck || loading ? "Loading..." : "Decks"}
-          </button>
-
-          {/* Save to deck button */}
-          <button
-            className="btn-outline hidden sm:inline-flex"
-            onClick={openDeckPicker}
-            disabled={loadingDeck || loading}
-            title={loadingDeck || loading ? "Loading..." : "Save current post to a deck"}
-          >
-            <PlusSquare className="w-4 h-4 mr-1" />
-            {loadingDeck || loading ? "Loading..." : "Save to deck"}
-          </button>
-
-          <button 
-            className="btn-outline" 
-            onClick={onExportPNG} 
-            title={exportDisabled ? "Waiting for images to load..." : "Export PNG"}
-            disabled={exportDisabled}
-          >
-            <ImageIcon className="w-4 h-4 mr-1" />
-            Export
-          </button>
-
-          <div className="h-6 w-px bg-slate-200 mx-1" />
-
           <ProfileButton />
         </div>
       </div>

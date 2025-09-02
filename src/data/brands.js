@@ -21,10 +21,10 @@ export async function fetchBrands(userId) {
   if (!userId) return [];
   if (!supabase) throw new Error("Supabase client is undefined");
 
+  // Fetch all brands globally - no user filtering
   const { data, error } = await supabase
     .from("brands")
     .select("*")
-    .eq("user_id", userId)
     .order("created_at", { ascending: false });
   
   if (error) throw error;
@@ -59,13 +59,12 @@ export async function upsertBrand(userId, brand) {
       .from("brands")
       .update(brandData)
       .eq("id", clean.id)
-      .eq("user_id", userId)
       .select()
       .single(); // fail if not found
 
     if (error) {
       if (error.code === 'PGRST116') {
-        throw new Error('Brand not found or access denied');
+        throw new Error('Brand not found');
       }
       throw error;
     }
@@ -102,8 +101,7 @@ export async function deleteBrand(userId, id) {
   const { error } = await supabase
     .from("brands")
     .delete()
-    .eq("id", id)
-    .eq("user_id", userId);
+    .eq("id", id);
 
   if (error) throw error;
   return true;
@@ -115,20 +113,19 @@ export async function deleteBrand(userId, id) {
 
 export function useBrands(userId) {
   const [brands, setBrands] = useState([]);
-  const [loading, setLoading] = useState(!!userId);
+  const [loading, setLoading] = useState(true); // Always load brands, regardless of userId
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
-  // reset immediately on sign-out
+  // Keep brands loaded even when signed out, but clear error state
   useEffect(() => {
     if (!userId) {
-      setBrands([]);
       setError("");
-      setLoading(false);
+      // Don't clear brands - keep them visible for unauthenticated users
     }
   }, [userId]);
 
-  // initial load
+  // initial load - now loads brands regardless of userId
   useEffect(() => {
     let cancelled = false;
 
@@ -136,8 +133,8 @@ export function useBrands(userId) {
       try {
         setLoading(true);
         setError("");
-        if (!userId) return;
-        const rows = await fetchBrands(userId);
+        // Load brands even without userId (for global access)
+        const rows = await fetchBrands(userId || "anonymous");
         if (!cancelled) setBrands(rows);
       } catch (e) {
         console.error("[useBrands] fetch error:", e);
@@ -151,11 +148,10 @@ export function useBrands(userId) {
     return () => {
       cancelled = true;
     };
-  }, [userId]);
+  }, []); // Remove userId dependency since brands are now global
 
-  // realtime (guarded)
+  // realtime (global subscription)
   useEffect(() => {
-    if (!userId) return;
     if (!supabase?.channel) {
       console.warn("[useBrands] Realtime channel not available. Skipping subscribe.");
       return;
@@ -164,10 +160,10 @@ export function useBrands(userId) {
     let channel;
     try {
       channel = supabase
-        .channel(`brands:${userId}`)
+        .channel(`brands:global`)
         .on(
           "postgres_changes",
-          { event: "*", schema: "public", table: "brands", filter: `user_id=eq.${userId}` },
+          { event: "*", schema: "public", table: "brands" },
           (payload) => {
             if (payload.eventType === "INSERT") {
               const row = payload.new;
@@ -195,7 +191,7 @@ export function useBrands(userId) {
     return () => {
       if (channel) supabase.removeChannel(channel);
     };
-  }, [userId]);
+  }, []); // Remove userId dependency for global subscription
 
   const saveBrand = useCallback(
     async (brandInput) => {
@@ -264,15 +260,13 @@ export function useBrands(userId) {
   );
 
   const reload = useCallback(async () => {
-    if (!userId) return;
     setLoading(true);
     setError("");
     try {
-      // Force fresh data on reload
+      // Force fresh data on reload - fetch all brands globally
       const { data: brands, error } = await supabase
         .from("brands")
         .select("*")
-        .eq("user_id", userId)
         .order("created_at", { ascending: false });
       
       if (error) throw error;
@@ -284,7 +278,7 @@ export function useBrands(userId) {
     } finally {
       setLoading(false);
     }
-  }, [userId]);
+  }, []); // Remove userId dependency for global reload
 
   return { brands, loading, saving, error, saveBrand, removeBrand, reload };
 }

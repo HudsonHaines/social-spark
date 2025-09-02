@@ -316,17 +316,11 @@ export default function App() {
   return (
     <Fragment>
       <AppShell
-        singleColumn={appState.page === "decks" || appState.page === "brands" || appState.page === "sharelinks"}
+        user={authenticatedUser}
         showDeckStrip={appState.page === "editor"}
         topBarProps={{
-          onExportPNG: handleExportPNG,
           user: authenticatedUser,
           onOpenMenu: () => setUiState(prev => ({ ...prev, menuOpen: true })),
-          deckActions: {
-            openDeckManager: () => navigateToPage("decks"),
-            openDeckPicker,
-          },
-          exportDisabled: !imagesReady || isExporting,
         }}
         deckStripProps={{
           deck: localDeck,

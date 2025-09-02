@@ -13,8 +13,8 @@ export default function AppShell({
   leftPanel = null,
   rightPreview = null,
   modals = {},
-  singleColumn = false,
   showDeckStrip = false,
+  user = null,
 }) {
   const {
     brandManagerOpen = false,
@@ -26,21 +26,21 @@ export default function AppShell({
 
   const hasLeft = !!leftPanel;
   const hasRight = !!rightPreview;
-  const twoCols = hasLeft && hasRight && !singleColumn;
+  const twoCols = hasLeft && hasRight;
 
   return (
     <div className="app-shell">
       <TopBar {...topBarProps} />
       
-      {showDeckStrip && <DeckStrip {...deckStripProps} />}
+      {showDeckStrip && (
+        <div className="border-b border-gray-200">
+          <div className="container-tight">
+            <DeckStrip {...deckStripProps} />
+          </div>
+        </div>
+      )}
 
-      <main
-        className={cx(
-          singleColumn ? "mx-auto w-full max-w-screen-2xl px-4" : "container-tight",
-          "py-4"
-        )}
-        style={singleColumn ? { maxWidth: "1536px" } : undefined}
-      >
+      <main className="container-tight py-4">
         <div
           className={cx(
             "grid gap-4 w-full",
@@ -61,7 +61,7 @@ export default function AppShell({
         </div>
       </main>
 
-      {brandManagerOpen ? <BrandManager onClose={onCloseBrandManager} /> : null}
+      {brandManagerOpen ? <BrandManager user={user} open={brandManagerOpen} onClose={onCloseBrandManager} /> : null}
       {deckManagerOpen ? (
         <DeckManager
           onClose={onCloseDeckManager}

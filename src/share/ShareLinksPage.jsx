@@ -20,6 +20,7 @@ import { useAuth } from '../auth/AuthProvider';
 import { 
   getUserDeckShares, 
   revokeDeckShare, 
+  deleteDeckShare,
   updateDeckShareExpiration,
   getDeckShareStats 
 } from '../data/decks';
@@ -139,6 +140,29 @@ const ShareLinksPage = () => {
     }
   }, [loadShareLinks]);
 
+  // Delete share link permanently
+  const handleDelete = useCallback(async (token) => {
+    if (!confirm('Are you sure you want to permanently delete this share link? This will remove all history and cannot be undone.')) {
+      return;
+    }
+    
+    setUpdating(prev => new Set([...prev, token]));
+    
+    try {
+      await deleteDeckShare(token);
+      await loadShareLinks(); // Refresh the list
+    } catch (err) {
+      console.error('Failed to delete share link:', err);
+      alert('Failed to delete share link: ' + err.message);
+    } finally {
+      setUpdating(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(token);
+        return newSet;
+      });
+    }
+  }, [loadShareLinks]);
+
   // Update expiration
   const handleUpdateExpiration = useCallback(async (token, newExpirationDate) => {
     setUpdating(prev => new Set([...prev, token]));
@@ -195,6 +219,27 @@ const ShareLinksPage = () => {
     } catch (err) {
       console.error('Failed to bulk revoke:', err);
       alert('Failed to revoke some links: ' + err.message);
+    } finally {
+      setBulkUpdating(false);
+    }
+  }, [selectedLinks, loadShareLinks]);
+
+  const handleBulkDelete = useCallback(async () => {
+    if (selectedLinks.size === 0) return;
+    if (!confirm(`Are you sure you want to permanently delete ${selectedLinks.size} share link(s)? This will remove all history and cannot be undone.`)) {
+      return;
+    }
+
+    setBulkUpdating(true);
+    
+    try {
+      await Promise.all(Array.from(selectedLinks).map(token => deleteDeckShare(token)));
+      await loadShareLinks();
+      setSelectedLinks(new Set());
+      alert(`Successfully deleted ${selectedLinks.size} share link(s).`);
+    } catch (err) {
+      console.error('Failed to bulk delete:', err);
+      alert('Failed to delete some links: ' + err.message);
     } finally {
       setBulkUpdating(false);
     }
@@ -281,7 +326,7 @@ const ShareLinksPage = () => {
 
   if (loading) {
     return (
-      <div className="container-tight py-8">
+      <div className="py-8">
         <div className="text-center">
           <RefreshCw className="animate-spin mx-auto mb-4" size={24} />
           <p className="text-app-muted">Loading share links...</p>
@@ -291,7 +336,7 @@ const ShareLinksPage = () => {
   }
 
   return (
-    <div className="container-tight py-8">
+    <div className="py-8">
       {/* Header */}
       <div className="mb-6">
         <h1 className="text-2xl font-bold mb-2">Share Link Management</h1>
@@ -385,10 +430,18 @@ const ShareLinksPage = () => {
                 <button
                   onClick={handleBulkRevoke}
                   disabled={bulkUpdating}
+                  className="btn-outline text-sm text-yellow-600 hover:bg-yellow-50"
+                >
+                  {bulkUpdating ? <RefreshCw size={14} className="animate-spin" /> : <AlertCircle size={14} />}
+                  Revoke Selected
+                </button>
+                <button
+                  onClick={handleBulkDelete}
+                  disabled={bulkUpdating}
                   className="btn-outline text-sm text-red-600 hover:bg-red-50"
                 >
                   {bulkUpdating ? <RefreshCw size={14} className="animate-spin" /> : <Trash2 size={14} />}
-                  Revoke Selected
+                  Delete Selected
                 </button>
                 <button
                   onClick={() => setSelectedLinks(new Set())}
@@ -482,6 +535,7 @@ const ShareLinksPage = () => {
               key={link.token}
               link={link}
               onRevoke={handleRevoke}
+              onDelete={handleDelete}
               onUpdateExpiration={handleUpdateExpiration}
               onCopy={copyLinkToClipboard}
               isUpdating={updating.has(link.token)}
@@ -531,7 +585,8 @@ const ShareLinksPage = () => {
 // Individual Share Link Card Component
 const ShareLinkCard = ({ 
   link, 
-  onRevoke, 
+  onRevoke,
+  onDelete, 
   onUpdateExpiration, 
   onCopy, 
   isUpdating, 
@@ -623,13 +678,23 @@ const ShareLinkCard = ({
           {!link.is_revoked && (
             <button
               onClick={() => onRevoke(link.token)}
-              className="btn-outline text-red-600 hover:bg-red-50"
-              title="Revoke link"
+              className="btn-outline text-yellow-600 hover:bg-yellow-50"
+              title="Revoke link (disable access but keep history)"
               disabled={isUpdating}
             >
-              {isUpdating ? <RefreshCw size={16} className="animate-spin" /> : <Trash2 size={16} />}
+              {isUpdating ? <RefreshCw size={16} className="animate-spin" /> : <AlertCircle size={16} />}
             </button>
           )}
+
+          {/* Delete */}
+          <button
+            onClick={() => onDelete(link.token)}
+            className="btn-outline text-red-600 hover:bg-red-50"
+            title="Delete link permanently (removes all history)"
+            disabled={isUpdating}
+          >
+            {isUpdating ? <RefreshCw size={16} className="animate-spin" /> : <Trash2 size={16} />}
+          </button>
         </div>
       </div>
 

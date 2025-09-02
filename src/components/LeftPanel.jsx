@@ -41,30 +41,6 @@ function CollapsibleSection({ title, children, defaultOpen = false }) {
   );
 }
 
-function Radio({ label, checked, onChange, name, value, id }) {
-  return (
-    <label
-      className={cx(
-        "px-3 py-2 rounded-lg border cursor-pointer select-none text-sm transition-colors",
-        checked 
-          ? "bg-blue-600 text-white border-blue-600 font-medium" 
-          : "bg-white hover:bg-slate-50 border-gray-300 text-gray-700"
-      )}
-      htmlFor={id}
-    >
-      <input
-        id={id}
-        name={name}
-        value={value}
-        type="radio"
-        className="sr-only"
-        checked={checked}
-        onChange={onChange}
-      />
-      {label}
-    </label>
-  );
-}
 
 // Compact Platform & Brand Bar
 function FoundationBar({ post, update, brands, onSelectBrand, openBrandManager }) {
@@ -164,9 +140,6 @@ const LeftPanel = memo(function LeftPanel(props) {
   } = props;
 
   if (!post) return null;
-
-  const fileImgRef = useRef(null);
-  const fileVidRef = useRef(null);
 
   // Supabase brands
   const { brands: brandRows } = useBrands(user?.id);
@@ -276,33 +249,9 @@ const LeftPanel = memo(function LeftPanel(props) {
             </div>
           </WorkflowStep>
 
-          {/* Media Upload - Streamlined */}
+          {/* Media Upload - Simplified */}
           <WorkflowStep title="📷 Add Media">
-            {/* Media Type Toggle */}
-            <div className="flex bg-gray-100 rounded-lg p-1 mb-4">
-              <Radio
-                id="type_images"
-                name="media_type"
-                value="images"
-                label="Images"
-                checked={post.type !== "video"}
-                onChange={() => {
-                  const n = post.media?.length || 0;
-                  const nextType = n > 1 ? "carousel" : "single";
-                  update({ type: nextType, videoSrc: "" });
-                }}
-              />
-              <Radio
-                id="type_video"
-                name="media_type"
-                value="video"
-                label="Video"
-                checked={post.type === "video"}
-                onChange={() => update({ type: "video" })}
-              />
-            </div>
-
-            {/* Upload zone - Prominent */}
+            {/* Drag and Drop Zone */}
             <div
               onDragOver={(e) => {
                 e.preventDefault();
@@ -312,47 +261,8 @@ const LeftPanel = memo(function LeftPanel(props) {
               className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center bg-gray-50 hover:bg-gray-100 hover:border-gray-400 transition-all cursor-pointer"
             >
               <ImageIcon className="w-12 h-12 mx-auto mb-3 text-gray-400" />
-              <p className="text-sm font-medium text-gray-700 mb-2">Drag files here or click to upload</p>
-              <p className="text-xs text-gray-500 mb-4">Support images and videos up to 10MB</p>
-              <div className="flex items-center justify-center gap-3">
-                <button 
-                  className="bg-blue-500 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-600 transition-colors"
-                  onClick={() => fileImgRef.current?.click()}
-                >
-                  Choose Images
-                </button>
-                <button 
-                  className="border border-gray-300 px-4 py-2 rounded-lg text-sm font-medium hover:bg-gray-50 transition-colors"
-                  onClick={() => fileVidRef.current?.click()}
-                >
-                  Choose Video
-                </button>
-              </div>
-
-              <input
-                id="image_files"
-                name="image_files"
-                ref={fileImgRef}
-                type="file"
-                accept="image/*"
-                multiple
-                className="sr-only"
-                onChange={async (e) => {
-                  if (e.target.files) await handleImageFiles(e.target.files);
-                }}
-              />
-              <input
-                id="video_file"
-                name="video_file"
-                ref={fileVidRef}
-                type="file"
-                accept="video/mp4,video/webm,video/quicktime"
-                className="sr-only"
-                onChange={async (e) => {
-                  const f = e.target.files?.[0];
-                  if (f) await handleVideoFile(f);
-                }}
-              />
+              <p className="text-sm font-medium text-gray-700 mb-2">Drag and drop your media here</p>
+              <p className="text-xs text-gray-500">Supports images and videos up to 10MB</p>
             </div>
 
             {/* Media Preview - Compact */}
