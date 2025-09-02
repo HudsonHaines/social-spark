@@ -2,6 +2,7 @@
 import React, { forwardRef, useCallback, useEffect, useMemo } from "react";
 import { ensurePostShape } from "../data/postShape";
 import { useExportStability } from "../hooks/useExportStability";
+import { canPlayVideo, getVideoThumbnail } from "../data/videoUtils";
 import InstagramPost from "./InstagramPost";
 
 const cx = (...a) => a.filter(Boolean).join(" ");
@@ -47,12 +48,13 @@ const RightPreview = forwardRef(function RightPreview(
     const isLandscape = aspectRatio === "16:9" || aspectRatio === "1.91:1";
 
     if (mode === "present") {
+      // Don't constrain height - let content flow naturally with scroll
       if (isPortrait) {
-        return { maxWidth: "min(500px, 90vw)", maxHeight: "90vh" };
+        return { maxWidth: "min(480px, 90%)" };
       } else if (isLandscape) {
-        return { maxWidth: "min(800px, 95vw)", maxHeight: "80vh" };
+        return { maxWidth: "min(650px, 95%)" };
       } else {
-        return { maxWidth: "min(600px, 90vw)", maxHeight: "90vh" };
+        return { maxWidth: "min(520px, 90%)" };
       }
     } else {
       // Create mode - maximized for better editing experience
@@ -201,28 +203,67 @@ const RightPreview = forwardRef(function RightPreview(
                   )}
                 >
                   {normalizedPost.type === "video" && normalizedPost.videoSrc ? (
-                    <video
-                      ref={videoRef}
-                      src={normalizedPost.videoSrc}
-                      className="absolute inset-0 w-full h-full object-cover"
-                      controls
-                      muted
-                      loop
-                      playsInline
-                      onClick={(e) => {
-                        if (e.target.paused) {
-                          e.target.play();
-                        } else {
-                          e.target.pause();
-                        }
-                      }}
-                    />
-                  ) : mediaCount > 0 ? (
+                    canPlayVideo(normalizedPost.videoSrc) ? (
+                      <video
+                        ref={videoRef}
+                        src={normalizedPost.videoSrc}
+                        className="absolute inset-0 w-full h-full object-cover"
+                        controls
+                        muted
+                        loop
+                        playsInline
+                        onClick={(e) => {
+                          if (e.target.paused) {
+                            e.target.play();
+                          } else {
+                            e.target.pause();
+                          }
+                        }}
+                        onError={(e) => {
+                          console.error('RightPreview: Video failed to load:', normalizedPost.videoSrc);
+                        }}
+                      />
+                    ) : (
+                      (() => {
+                        const thumbnail = getVideoThumbnail(normalizedPost);
+                        return (
+                          <div className="absolute inset-0 flex flex-col items-center justify-center text-gray-400">
+                            {thumbnail && thumbnail !== normalizedPost.videoSrc ? (
+                              <>
+                                <img
+                                  src={thumbnail}
+                                  alt="Video thumbnail"
+                                  className="absolute inset-0 w-full h-full object-cover"
+                                />
+                                <div className="relative z-10 bg-black/60 rounded-full p-4">
+                                  <svg className="w-8 h-8 text-white" fill="currentColor" viewBox="0 0 24 24">
+                                    <path d="M8 5v14l11-7z"/>
+                                  </svg>
+                                </div>
+                                <div className="relative z-10 text-white text-sm mt-2">Video unavailable</div>
+                              </>
+                            ) : (
+                              <>
+                                <svg className="w-12 h-12 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                                </svg>
+                                <div className="text-sm">Video unavailable</div>
+                              </>
+                            )}
+                          </div>
+                        );
+                      })()
+                    )
+                  ) : mediaCount > 0 && normalizedPost.media[currentIndex] ? (
                     <img
                       src={normalizedPost.media[currentIndex]}
                       alt=""
                       className="absolute inset-0 w-full h-full object-cover"
                       draggable={false}
+                      onError={(e) => {
+                        console.error('RightPreview: Image failed to load:', normalizedPost.media[currentIndex]);
+                        console.error('Post data:', normalizedPost);
+                      }}
                     />
                   ) : (
                     <div className="absolute inset-0 grid place-items-center text-sm text-slate-500">

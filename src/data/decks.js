@@ -45,6 +45,21 @@ export async function deleteDeck(deckId) {
   return true;
 }
 
+export async function renameDeck(deckId, newTitle) {
+  validateDeckId(deckId);
+  if (!newTitle?.trim()) throw new Error('Deck title is required');
+  
+  const { data, error } = await supabase
+    .from("decks")
+    .update({ title: newTitle.trim() })
+    .eq("id", deckId)
+    .select("id, title, created_at")
+    .single();
+    
+  if (error) throw error;
+  return data;
+}
+
 export async function addItemToDeck(deckId, postJson, orderIndex = null) {
   validateDeckId(deckId);
   if (!postJson || typeof postJson !== 'object') throw new Error('Invalid post data');
@@ -85,6 +100,42 @@ export async function listDeckItems(deckId) {
 export async function deleteDeckItem(itemId) {
   if (!itemId) throw new Error('Item ID is required');
   const { error } = await supabase.from("deck_items").delete().eq("id", itemId);
+  if (error) throw error;
+  return true;
+}
+
+export async function updateDeckItem(itemId, postJson) {
+  if (!itemId) throw new Error('Item ID is required');
+  if (!postJson || typeof postJson !== 'object') throw new Error('Invalid post data');
+  
+  // Add version tracking
+  const updatedPost = {
+    ...postJson,
+    version: (postJson.version || 1) + 1,
+    updatedAt: new Date().toISOString()
+  };
+  
+  const { data, error } = await supabase
+    .from("deck_items")
+    .update({ post_json: updatedPost })
+    .eq("id", itemId)
+    .select("id, deck_id, order_index, post_json, created_at")
+    .single();
+    
+  if (error) throw error;
+  return data;
+}
+
+export async function deleteDeckItems(itemIds) {
+  if (!itemIds || !Array.isArray(itemIds) || itemIds.length === 0) {
+    throw new Error('Item IDs array is required');
+  }
+  
+  const { error } = await supabase
+    .from("deck_items")
+    .delete()
+    .in("id", itemIds);
+    
   if (error) throw error;
   return true;
 }

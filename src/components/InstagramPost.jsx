@@ -251,7 +251,7 @@ export default function InstagramPost({
         </div>
       </div>
 
-      <style jsx>{`
+      <style>{`
         .instagram-post {
           font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
           max-width: 470px;

@@ -93,90 +93,95 @@ const EditorPresentMode = memo(function EditorPresentMode({
 
 
   return (
-    <div className="h-full flex flex-col items-center justify-center bg-app-surface p-4">
-      {/* Progress indicator */}
-      {posts.length > 1 && (
-        <div className="mb-2 text-sm text-app-muted">
-          {currentIndex + 1} / {posts.length}
-        </div>
-      )}
-
-      {/* Platform tag and Status (for internal mode) */}
-      <div className="mb-4 flex items-center gap-3">
-        {showPlatformTags && (
-          <span className={`inline-block px-3 py-1 rounded-full text-white text-xs font-medium ${platformInfo.colorClass}`}>
-            {platformInfo.display}
-          </span>
-        )}
-        
-        {/* Internal Mode Status Dropdown */}
-        {isInternalMode && (
-          <div className="relative">
-            <details className="relative">
-              <summary className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-medium cursor-pointer list-none ${statusInfo.colorClass}`}>
-                {statusInfo.display}
-                <ChevronDown className="w-3 h-3 ml-1" />
-              </summary>
-              <div className="absolute top-full left-0 mt-1 bg-white border rounded-lg shadow-lg py-1 min-w-[140px] z-10">
-                <button
-                  className="w-full text-left px-3 py-2 text-sm hover:bg-gray-100 text-gray-700"
-                  onClick={() => handleStatusChange('needs-revisions')}
-                >
-                  Needs Revisions
-                </button>
-                <button
-                  className="w-full text-left px-3 py-2 text-sm hover:bg-gray-100 text-gray-700"
-                  onClick={() => handleStatusChange('client-approved')}
-                >
-                  Client Approved
-                </button>
+    <div className="h-screen flex flex-col bg-white shadow-lg mx-2 my-1 rounded-lg">
+      {/* Header section with progress, platform tags, and status */}
+      <div className="flex-shrink-0 px-6 py-2 border-b bg-gray-50 rounded-t-lg">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            {/* Progress indicator */}
+            {posts.length > 1 && (
+              <div className="text-sm text-gray-600">
+                {currentIndex + 1} / {posts.length}
               </div>
-            </details>
+            )}
+
+            {/* Platform tag and Status (for internal mode) */}
+            <div className="flex items-center gap-3">
+              {showPlatformTags && (
+                <span className={`inline-block px-3 py-1 rounded-full text-white text-xs font-medium ${platformInfo.colorClass}`}>
+                  {platformInfo.display}
+                </span>
+              )}
+              
+              {/* Internal Mode Status Dropdown */}
+              {isInternalMode && (
+                <div className="relative">
+                  <details className="relative">
+                    <summary className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-medium cursor-pointer list-none ${statusInfo.colorClass}`}>
+                      {statusInfo.display}
+                      <ChevronDown className="w-3 h-3 ml-1" />
+                    </summary>
+                    <div className="absolute top-full left-0 mt-1 bg-white border rounded-lg shadow-lg py-1 min-w-[140px] z-10">
+                      <button
+                        className="w-full text-left px-3 py-2 text-sm hover:bg-gray-100 text-gray-700"
+                        onClick={() => handleStatusChange('needs-revisions')}
+                      >
+                        Needs Revisions
+                      </button>
+                      <button
+                        className="w-full text-left px-3 py-2 text-sm hover:bg-gray-100 text-gray-700"
+                        onClick={() => handleStatusChange('client-approved')}
+                      >
+                        Client Approved
+                      </button>
+                    </div>
+                  </details>
+                </div>
+              )}
+            </div>
           </div>
-        )}
+          
+          {/* Exit button in header */}
+          {onClose && (
+            <button className="btn-outline text-xs" onClick={onClose} title="Exit present mode (Esc)">
+              Exit
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Main preview with dynamic sizing */}
-      <div className="flex-1 flex items-center justify-center w-full max-w-none overflow-hidden px-4">
-        <div className="w-full h-full flex items-center justify-center">
-          <RightPreview
-            post={normalizedPost}
-            setPost={() => {}} // Read-only in present mode
-            mode="present"
-            clamp={null} // Let RightPreview handle dynamic sizing
-            showExport={false} // Hide export button in present mode
-          />
-        </div>
+      <div className="flex-1 min-h-0 overflow-auto" style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '20px' }}>
+        <RightPreview
+          post={normalizedPost}
+          setPost={() => {}} // Read-only in present mode
+          mode="present"
+          clamp={{ maxPx: 500, maxVmin: 65 }} // Constrain to fit with all content visible
+          showExport={false} // Hide export button in present mode
+        />
       </div>
 
-      {/* Navigation controls */}
+      {/* Footer with navigation controls */}
       {posts.length > 1 && (
-        <div className="flex items-center gap-2 mt-4">
-          <button
-            className="btn-outline flex items-center"
-            onClick={goPrev}
-            title="Previous post (←)"
-          >
-            <ChevronLeft className="w-4 h-4 mr-1" />
-            Prev
-          </button>
-          <button
-            className="btn flex items-center"
-            onClick={goNext}
-            title="Next post (→)"
-          >
-            Next
-            <ChevronRight className="w-4 h-4 ml-1" />
-          </button>
-        </div>
-      )}
-
-      {/* Exit button */}
-      {onClose && (
-        <div className="mt-2">
-          <button className="btn-outline text-xs" onClick={onClose} title="Exit present mode (Esc)">
-            Back to Editor
-          </button>
+        <div className="flex-shrink-0 px-6 py-2 border-t bg-gray-50 rounded-b-lg">
+          <div className="flex items-center justify-center gap-2">
+            <button
+              className="btn-outline flex items-center"
+              onClick={goPrev}
+              title="Previous post (←)"
+            >
+              <ChevronLeft className="w-4 h-4 mr-1" />
+              Prev
+            </button>
+            <button
+              className="btn flex items-center"
+              onClick={goNext}
+              title="Next post (→)"
+            >
+              Next
+              <ChevronRight className="w-4 h-4 ml-1" />
+            </button>
+          </div>
         </div>
       )}
     </div>

@@ -6,6 +6,8 @@ import {
   addItemToDeck,
   deleteDeck,
   deleteDeckItem,
+  deleteDeckItems,
+  renameDeck,
   getOrCreateDeckShare,
 } from "../data/decks";
 import { ensurePostShape } from "../data/postShape";
@@ -17,8 +19,16 @@ import {
   Images,
   Film,
   Link as LinkIcon,
+  Plus,
+  Edit3,
+  RefreshCw,
+  Check,
+  X,
+  Copy,
+  Edit2,
 } from "lucide-react";
 import PostPreviewModal from "./PostPreviewModal";
+import { getVideoThumbnail, canPlayVideo } from "../data/videoUtils";
 
 const cx = (...a) => a.filter(Boolean).join(" ");
 
@@ -44,6 +54,22 @@ export default function DecksPage({
 
   const [previewOpen, setPreviewOpen] = useState(false);
   const [previewPost, setPreviewPost] = useState(null);
+  
+  // Share modal state
+  const [shareModalOpen, setShareModalOpen] = useState(false);
+  const [shareUrl, setShareUrl] = useState('');
+  
+  // Bulk operations state
+  const [selectedItems, setSelectedItems] = useState(new Set());
+  const [bulkUpdating, setBulkUpdating] = useState(false);
+  
+  // Deck bulk operations state
+  const [selectedDecks, setSelectedDecks] = useState(new Set());
+  const [bulkDeckUpdating, setBulkDeckUpdating] = useState(false);
+  
+  // Deck rename state
+  const [renamingDeckId, setRenamingDeckId] = useState(null);
+  const [newDeckName, setNewDeckName] = useState('');
 
   const { decks, items, activeId, loading } = state;
 
@@ -97,6 +123,9 @@ export default function DecksPage({
   // Load items effect
   useEffect(() => {
     let mounted = true;
+    
+    // Clear selections when switching decks
+    setSelectedItems(new Set());
     
     const loadItems = async () => {
       if (!activeId) {
@@ -170,19 +199,149 @@ export default function DecksPage({
     }
   }, [currentPost, activeId]);
 
+  // Bulk operations handlers
+  const handleSelectAll = useCallback(() => {
+    if (selectedItems.size === items.length) {
+      setSelectedItems(new Set());
+    } else {
+      setSelectedItems(new Set(items.map(item => item.id)));
+    }
+  }, [selectedItems.size, items]);
+
+  const handleSelectItem = useCallback((itemId) => {
+    setSelectedItems(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(itemId)) {
+        newSet.delete(itemId);
+      } else {
+        newSet.add(itemId);
+      }
+      return newSet;
+    });
+  }, []);
+
+  const handleBulkDelete = useCallback(async () => {
+    if (selectedItems.size === 0) return;
+    if (!confirm(`Are you sure you want to delete ${selectedItems.size} post(s) from this deck? This cannot be undone.`)) {
+      return;
+    }
+
+    setBulkUpdating(true);
+    
+    try {
+      await deleteDeckItems(Array.from(selectedItems));
+      const rows = await listDeckItems(activeId);
+      setState(prev => ({
+        ...prev,
+        items: rows,
+        error: null
+      }));
+      setSelectedItems(new Set());
+      alert(`Successfully deleted ${selectedItems.size} post(s).`);
+    } catch (err) {
+      console.error('Failed to bulk delete:', err);
+      alert('Failed to delete posts: ' + err.message);
+    } finally {
+      setBulkUpdating(false);
+    }
+  }, [selectedItems, activeId]);
+
+  // Deck rename handlers
+  const handleStartRename = useCallback((deckId, currentName) => {
+    setRenamingDeckId(deckId);
+    setNewDeckName(currentName);
+  }, []);
+
+  const handleCancelRename = useCallback(() => {
+    setRenamingDeckId(null);
+    setNewDeckName('');
+  }, []);
+
+  const handleSaveRename = useCallback(async () => {
+    if (!renamingDeckId || !newDeckName.trim()) return;
+    
+    try {
+      await renameDeck(renamingDeckId, newDeckName.trim());
+      const rows = await listDecks(userId);
+      setState(prev => ({
+        ...prev,
+        decks: rows,
+        error: null
+      }));
+      setRenamingDeckId(null);
+      setNewDeckName('');
+    } catch (err) {
+      console.error('Failed to rename deck:', err);
+      alert('Failed to rename deck: ' + err.message);
+    }
+  }, [renamingDeckId, newDeckName, userId]);
+
+  // Deck bulk operation handlers
+  const handleSelectAllDecks = useCallback(() => {
+    if (selectedDecks.size === decks.length) {
+      setSelectedDecks(new Set());
+    } else {
+      setSelectedDecks(new Set(decks.map(deck => deck.id)));
+    }
+  }, [selectedDecks.size, decks]);
+
+  const handleSelectDeck = useCallback((deckId) => {
+    setSelectedDecks(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(deckId)) {
+        newSet.delete(deckId);
+      } else {
+        newSet.add(deckId);
+      }
+      return newSet;
+    });
+  }, []);
+
+  const handleBulkDeleteDecks = useCallback(async () => {
+    if (selectedDecks.size === 0) return;
+    if (!confirm(`Are you sure you want to delete ${selectedDecks.size} deck(s) and all their posts? This cannot be undone.`)) {
+      return;
+    }
+
+    setBulkDeckUpdating(true);
+    
+    try {
+      // Delete each deck
+      for (const deckId of selectedDecks) {
+        await deleteDeck(deckId);
+      }
+      
+      // Reload decks and reset state
+      const rows = await listDecks(userId);
+      setState(prev => ({
+        ...prev,
+        decks: rows,
+        activeId: rows.length ? String(rows[0].id) : null,
+        items: rows.length ? prev.items : [],
+        error: null
+      }));
+      setSelectedDecks(new Set());
+      alert(`Successfully deleted ${selectedDecks.size} deck(s).`);
+    } catch (err) {
+      console.error('Failed to bulk delete decks:', err);
+      alert('Failed to delete decks: ' + err.message);
+    } finally {
+      setBulkDeckUpdating(false);
+    }
+  }, [selectedDecks, userId]);
+
   async function handleDeleteDeck(deckId) {
     if (!deckId) return;
     if (!confirm("Delete this deck and all posts in it?")) return;
     try {
       await deleteDeck(deckId);
       const rows = await listDecks(userId);
-      setDecks(rows);
-      if (rows.length) {
-        setActiveId(String(rows[0].id));
-      } else {
-        setActiveId(null);
-        setItems([]);
-      }
+      setState(prev => ({
+        ...prev,
+        decks: rows,
+        activeId: rows.length ? String(rows[0].id) : null,
+        items: rows.length ? prev.items : []
+      }));
     } catch (e) {
       console.error(e);
       alert("Could not delete deck.");
@@ -208,14 +367,8 @@ export default function DecksPage({
       const token = await getOrCreateDeckShare(activeDeck.id, { days: 7 });
       const url = `${window.location.origin}/s/${encodeURIComponent(token)}`;
       
-      // Try to copy to clipboard
-      if (navigator.clipboard && window.isSecureContext) {
-        await navigator.clipboard.writeText(url);
-        alert(`Share link copied to clipboard!\n\nURL: ${url}\n\nThis link stays the same and updates automatically with any changes to your deck.`);
-      } else {
-        // Fallback: show the URL in a prompt for manual copying
-        prompt("Copy this share link:", url);
-      }
+      setShareUrl(url);
+      setShareModalOpen(true);
       
       console.log("Share link retrieved/created:", url);
     } catch (e) {
@@ -289,6 +442,42 @@ export default function DecksPage({
             <div className="px-3 py-2 border-b text-xs uppercase tracking-wide label-strong">
               Your decks
             </div>
+            
+            {/* Deck bulk select controls */}
+            {decks.length > 0 && (
+              <div className="p-3 border-b bg-gray-50 flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <input
+                    type="checkbox"
+                    checked={selectedDecks.size === decks.length && decks.length > 0}
+                    onChange={handleSelectAllDecks}
+                    className="rounded border-gray-300 text-blue-600 shadow-sm focus:border-blue-300 focus:ring focus:ring-offset-0 focus:ring-blue-200 focus:ring-opacity-50"
+                  />
+                  <span className="text-sm text-gray-700">
+                    {selectedDecks.size > 0 
+                      ? `${selectedDecks.size} of ${decks.length} selected`
+                      : `Select all ${decks.length} decks`
+                    }
+                  </span>
+                </div>
+                
+                {selectedDecks.size > 0 && (
+                  <button
+                    onClick={handleBulkDeleteDecks}
+                    disabled={bulkDeckUpdating}
+                    className="btn-outline text-sm text-red-600 hover:bg-red-50"
+                  >
+                    {bulkDeckUpdating ? (
+                      <RefreshCw className="w-4 h-4 mr-1 animate-spin" />
+                    ) : (
+                      <Trash2 className="w-4 h-4 mr-1" />
+                    )}
+                    Delete Selected
+                  </button>
+                )}
+              </div>
+            )}
+            
             <div className="max-h-[60vh] overflow-auto">
               {loading.decks ? (
                 <div className="p-3 text-sm text-app-muted">Loading...</div>
@@ -319,6 +508,16 @@ export default function DecksPage({
                       >
                         <div className="flex items-center justify-between gap-3">
                           <div className="flex items-center gap-3 min-w-0">
+                            {/* Bulk select checkbox */}
+                            <div onClick={(e) => e.stopPropagation()}>
+                              <input
+                                type="checkbox"
+                                checked={selectedDecks.has(d.id)}
+                                onChange={() => handleSelectDeck(d.id)}
+                                className="rounded border-gray-300 text-blue-600 shadow-sm focus:border-blue-300 focus:ring focus:ring-offset-0 focus:ring-blue-200 focus:ring-opacity-50"
+                              />
+                            </div>
+                            
                             {/* custom radio */}
                             <span
                               aria-hidden="true"
@@ -337,11 +536,53 @@ export default function DecksPage({
                                 flex: "0 0 auto",
                               }}
                             />
-                            <div className="min-w-0">
-                              <div className="font-medium truncate">{d.title}</div>
-                              <div className="text-app-muted text-xs">
-                                {new Date(d.created_at).toLocaleString()}
-                              </div>
+                            <div className="min-w-0 flex-1">
+                              {renamingDeckId === d.id ? (
+                                <div className="flex items-center gap-1">
+                                  <input
+                                    type="text"
+                                    value={newDeckName}
+                                    onChange={(e) => setNewDeckName(e.target.value)}
+                                    className="text-sm px-1 py-0.5 border rounded flex-1 min-w-0"
+                                    onKeyDown={(e) => {
+                                      if (e.key === 'Enter') handleSaveRename();
+                                      if (e.key === 'Escape') handleCancelRename();
+                                    }}
+                                    autoFocus
+                                  />
+                                  <button
+                                    onClick={handleSaveRename}
+                                    className="p-0.5 text-green-600 hover:bg-green-50 rounded"
+                                  >
+                                    <Check className="w-3 h-3" />
+                                  </button>
+                                  <button
+                                    onClick={handleCancelRename}
+                                    className="p-0.5 text-red-600 hover:bg-red-50 rounded"
+                                  >
+                                    <X className="w-3 h-3" />
+                                  </button>
+                                </div>
+                              ) : (
+                                <div className="group flex items-center gap-2">
+                                  <div className="min-w-0 flex-1">
+                                    <div className="font-medium truncate">{d.title}</div>
+                                    <div className="text-app-muted text-xs">
+                                      {new Date(d.created_at).toLocaleString()}
+                                    </div>
+                                  </div>
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleStartRename(d.id, d.title);
+                                    }}
+                                    className="opacity-0 group-hover:opacity-100 p-1 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded transition-all"
+                                    title="Rename deck"
+                                  >
+                                    <Edit3 className="w-3 h-3" />
+                                  </button>
+                                </div>
+                              )}
                             </div>
                           </div>
                           <div className="chip">{d.count ?? ""}</div>
@@ -369,7 +610,41 @@ export default function DecksPage({
                 This deck has no posts. Create posts in the editor and use "Save to deck" to add them.
               </div>
             ) : (
-              <ul className="p-3 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+              <>
+                {/* Select All Controls */}
+                <div className="p-3 border-b bg-gray-50 flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <input
+                      type="checkbox"
+                      checked={selectedItems.size === items.length && items.length > 0}
+                      onChange={handleSelectAll}
+                      className="rounded border-gray-300 text-blue-600 shadow-sm focus:border-blue-300 focus:ring focus:ring-offset-0 focus:ring-blue-200 focus:ring-opacity-50"
+                    />
+                    <span className="text-sm text-gray-700">
+                      {selectedItems.size > 0 
+                        ? `${selectedItems.size} of ${items.length} selected`
+                        : `Select all ${items.length} posts`
+                      }
+                    </span>
+                  </div>
+                  
+                  {selectedItems.size > 0 && (
+                    <button
+                      onClick={handleBulkDelete}
+                      disabled={bulkUpdating}
+                      className="btn-outline text-sm text-red-600 hover:bg-red-50"
+                    >
+                      {bulkUpdating ? (
+                        <RefreshCw className="w-4 h-4 mr-1 animate-spin" />
+                      ) : (
+                        <Trash2 className="w-4 h-4 mr-1" />
+                      )}
+                      Delete Selected
+                    </button>
+                  )}
+                </div>
+                
+                <ul className="p-3 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                 {items.map((it) => {
                   const pj = ensurePostShape(it.post_json || {});
                   const kind =
@@ -381,10 +656,9 @@ export default function DecksPage({
                   const Icon =
                     kind === "video" ? Film : kind === "carousel" ? Images : ImageIcon;
 
-                  const thumb =
-                    pj.type === "video" && pj.videoSrc
-                      ? pj.videoSrc
-                      : pj.media?.[0] || "";
+                  const thumb = pj.type === "video" && pj.videoSrc
+                    ? getVideoThumbnail(pj) || pj.videoSrc
+                    : pj.media?.[0] || "";
 
                   const label =
                     (pj.brand?.name || pj.brand?.username || "Post") +
@@ -396,25 +670,65 @@ export default function DecksPage({
                   return (
                     <li
                       key={it.id}
-                      className="border border-app rounded-lg overflow-hidden cursor-pointer"
-                      onClick={() => openPreview(pj)}
+                      className="border border-app rounded-lg overflow-hidden cursor-pointer relative"
                     >
-                      <div className="relative aspect-square bg-app-muted">
+                      {/* Individual item checkbox */}
+                      <div 
+                        className="absolute top-2 left-2 z-10"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={selectedItems.has(it.id)}
+                          onChange={() => handleSelectItem(it.id)}
+                          className="rounded border-gray-300 text-blue-600 shadow-sm focus:border-blue-300 focus:ring focus:ring-offset-0 focus:ring-blue-200 focus:ring-opacity-50"
+                        />
+                      </div>
+                      
+                      <div 
+                        className="relative aspect-square bg-app-muted"
+                        onClick={() => openPreview(pj)}
+                      >
                         {thumb ? (
                           pj.type === "video" ? (
-                            <video
-                              src={thumb}
-                              className="absolute inset-0 w-full h-full object-cover"
-                              muted
-                              playsInline
-                              preload="metadata"
-                            />
+                            canPlayVideo(pj.videoSrc) ? (
+                              <div className="relative w-full h-full">
+                                <img
+                                  src={thumb}
+                                  className="absolute inset-0 w-full h-full object-cover"
+                                  alt="Video thumbnail"
+                                />
+                                <div className="absolute inset-0 flex items-center justify-center">
+                                  <div className="bg-black/60 rounded-full p-3">
+                                    <Film className="w-6 h-6 text-white" />
+                                  </div>
+                                </div>
+                              </div>
+                            ) : (
+                              <div className="absolute inset-0 flex flex-col items-center justify-center text-gray-400 bg-gray-100">
+                                <Film className="w-8 h-8 mb-2" />
+                                <div className="text-xs">Video unavailable</div>
+                              </div>
+                            )
                           ) : (
                             <img
                               src={thumb}
                               className="absolute inset-0 w-full h-full object-cover"
                               alt=""
                               draggable={false}
+                              onError={(e) => {
+                                console.error('Image failed to load:', thumb);
+                                // Handle broken images gracefully
+                                e.target.style.display = 'none';
+                                e.target.parentElement.innerHTML = `
+                                  <div class="absolute inset-0 flex flex-col items-center justify-center text-gray-400">
+                                    <svg class="w-8 h-8 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                                    </svg>
+                                    <div class="text-xs">Image unavailable</div>
+                                  </div>
+                                `;
+                              }}
                             />
                           )
                         ) : (
@@ -433,11 +747,36 @@ export default function DecksPage({
                       </div>
 
                       <div className="p-2">
-                        <div className="text-sm truncate">{label}</div>
+                        <div className="flex items-center justify-between">
+                          <div className="text-sm truncate flex-1">{label}</div>
+                          {pj.version && pj.version > 1 && (
+                            <span className="text-xs bg-green-100 text-green-700 px-1.5 py-0.5 rounded ml-2">
+                              v{pj.version}
+                            </span>
+                          )}
+                        </div>
                         <div className="text-app-muted text-xs">
                           {new Date(it.created_at).toLocaleString()}
+                          {pj.updatedAt && (
+                            <span className="ml-1 text-green-600">
+                              • Updated {new Date(pj.updatedAt).toLocaleDateString()}
+                            </span>
+                          )}
                         </div>
                         <div className="flex items-center justify-end gap-2 mt-2">
+                          {onLoadToEditor && (
+                            <button
+                              className="chip"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                onLoadToEditor(pj, activeId, it.id);
+                              }}
+                              title="Load this post in the editor"
+                            >
+                              <Edit2 className="w-3 h-3 mr-1" />
+                              Edit
+                            </button>
+                          )}
                           <button
                             className="chip"
                             onClick={(e) => {
@@ -455,6 +794,7 @@ export default function DecksPage({
                   );
                 })}
               </ul>
+              </>
             )}
           </div>
         </div>
@@ -466,6 +806,90 @@ export default function DecksPage({
         post={previewPost}
         onLoadToEditor={onLoadToEditor}
       />
+      
+      <ShareModal
+        open={shareModalOpen}
+        onClose={() => setShareModalOpen(false)}
+        url={shareUrl}
+        deckTitle={activeDeck?.title}
+      />
+    </div>
+  );
+}
+
+// Share Modal Component
+function ShareModal({ open, onClose, url, deckTitle }) {
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = async () => {
+    if (navigator.clipboard && window.isSecureContext) {
+      try {
+        await navigator.clipboard.writeText(url);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+      } catch (err) {
+        console.error('Failed to copy:', err);
+        // Fallback: select the text
+        const input = document.querySelector('#share-url-input');
+        if (input) {
+          input.select();
+          input.setSelectionRange(0, 99999);
+        }
+      }
+    } else {
+      // Fallback: select the text
+      const input = document.querySelector('#share-url-input');
+      if (input) {
+        input.select();
+        input.setSelectionRange(0, 99999);
+      }
+    }
+  };
+
+  if (!open) return null;
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={onClose}>
+      <div className="bg-white rounded-lg p-6 m-4 w-full max-w-md" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-lg font-semibold">Share Deck</h2>
+          <button
+            onClick={onClose}
+            className="text-gray-400 hover:text-gray-600 p-1 rounded-full hover:bg-gray-100"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+        
+        <div className="mb-4">
+          <p className="text-sm text-gray-600 mb-3">
+            Share "{deckTitle}" with this public link. The link stays the same and updates automatically with any changes to your deck.
+          </p>
+          
+          <div className="flex items-center gap-2">
+            <input
+              id="share-url-input"
+              type="text"
+              value={url}
+              readOnly
+              className="flex-1 px-3 py-2 border border-gray-300 rounded-md bg-gray-50 text-sm"
+            />
+            <button
+              onClick={handleCopy}
+              className="btn-outline px-3 py-2 flex items-center gap-2"
+            >
+              <Copy className="w-4 h-4" />
+              {copied ? 'Copied!' : 'Copy'}
+            </button>
+          </div>
+        </div>
+        
+        <div className="flex justify-end gap-2">
+          <button onClick={onClose} className="btn-outline">
+            Done
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

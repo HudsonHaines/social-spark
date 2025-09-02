@@ -10,6 +10,11 @@ import {
   ChevronRight,
   Save,
   Download,
+  RotateCcw,
+  X,
+  AlertTriangle,
+  Edit2,
+  RefreshCw,
 } from "lucide-react";
 import { useBrands } from "../data/brands";
 
@@ -129,7 +134,11 @@ const LeftPanel = memo(function LeftPanel(props) {
     clearVideo,
     removeImageAt,
     // deck operations
+    addToDeck = () => {},
     saveToDeck = () => {},
+    updateInDeck = () => {},
+    editingFromDeck = null,
+    clearEditingFromDeck = () => {},
     openDeckPicker = () => {},
     // brand manager
     openBrandManager,
@@ -138,6 +147,13 @@ const LeftPanel = memo(function LeftPanel(props) {
     isExporting = false,
     imagesReady = true,
   } = props;
+
+  // State for image drag and drop
+  const [draggedImageIndex, setDraggedImageIndex] = useState(null);
+  const [dragOverImageIndex, setDragOverImageIndex] = useState(null);
+  
+  // State for clear confirmation modal
+  const [showClearModal, setShowClearModal] = useState(false);
 
   if (!post) return null;
 
@@ -183,16 +199,180 @@ const LeftPanel = memo(function LeftPanel(props) {
     syncPostBrandFromRow(row);
   }, [brandRows, syncPostBrandFromRow]);
 
+  // Image drag and drop handlers
+  const handleImageDragStart = useCallback((e, index) => {
+    setDraggedImageIndex(index);
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', index.toString());
+  }, []);
+
+  const handleImageDragOver = useCallback((e, index) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    setDragOverImageIndex(index);
+  }, []);
+
+  const handleImageDragLeave = useCallback((e) => {
+    if (!e.currentTarget.contains(e.relatedTarget)) {
+      setDragOverImageIndex(null);
+    }
+  }, []);
+
+  const handleImageDrop = useCallback((e, dropIndex) => {
+    e.preventDefault();
+    
+    if (draggedImageIndex === null || draggedImageIndex === dropIndex) {
+      setDraggedImageIndex(null);
+      setDragOverImageIndex(null);
+      return;
+    }
+
+    // Create new array with reordered images
+    const newMedia = [...(post.media || [])];
+    const newMediaMeta = [...(post.mediaMeta || [])];
+    
+    // Get the dragged items
+    const draggedMedia = newMedia[draggedImageIndex];
+    const draggedMeta = newMediaMeta[draggedImageIndex];
+    
+    // Remove the dragged items
+    newMedia.splice(draggedImageIndex, 1);
+    newMediaMeta.splice(draggedImageIndex, 1);
+    
+    // Insert at new position
+    newMedia.splice(dropIndex, 0, draggedMedia);
+    newMediaMeta.splice(dropIndex, 0, draggedMeta);
+    
+    // Update active index if needed
+    let newActiveIndex = post.activeIndex || 0;
+    if (draggedImageIndex === post.activeIndex) {
+      // The active image was moved
+      newActiveIndex = dropIndex;
+    } else if (draggedImageIndex < post.activeIndex && dropIndex >= post.activeIndex) {
+      // Image moved from before active to after active
+      newActiveIndex = post.activeIndex - 1;
+    } else if (draggedImageIndex > post.activeIndex && dropIndex <= post.activeIndex) {
+      // Image moved from after active to before active
+      newActiveIndex = post.activeIndex + 1;
+    }
+    
+    // Update the post
+    update({
+      media: newMedia,
+      mediaMeta: newMediaMeta,
+      activeIndex: newActiveIndex
+    });
+    
+    // Reset drag state
+    setDraggedImageIndex(null);
+    setDragOverImageIndex(null);
+  }, [post.media, post.mediaMeta, post.activeIndex, draggedImageIndex, update]);
+
+  const handleImageDragEnd = useCallback(() => {
+    setDraggedImageIndex(null);
+    setDragOverImageIndex(null);
+  }, []);
+
+  // Clear all post content while preserving brand
+  const handleClearFields = useCallback(() => {
+    if (!post) return;
+    
+    // Check if user has opted to skip confirmation
+    const skipConfirmation = localStorage.getItem('skipClearFieldsConfirmation') === 'true';
+    
+    if (skipConfirmation) {
+      performClear();
+    } else {
+      setShowClearModal(true);
+    }
+  }, [post]);
+
+  const performClear = useCallback(() => {
+    if (!post) return;
+
+    // Preserve brand information
+    const preservedBrand = {
+      brandId: post.brandId,
+      brand: post.brand,
+      platform: post.platform
+    };
+
+    // Reset to empty post with preserved brand
+    update({
+      ...preservedBrand,
+      caption: "",
+      media: [],
+      mediaMeta: [],
+      videoSrc: "",
+      type: "single",
+      activeIndex: 0,
+      link: null
+    });
+
+    setShowClearModal(false);
+  }, [post, update]);
+
+  const handleClearConfirm = useCallback((dontShowAgain) => {
+    if (dontShowAgain) {
+      localStorage.setItem('skipClearFieldsConfirmation', 'true');
+    }
+    performClear();
+  }, [performClear]);
+
+  const handleClearCancel = useCallback(() => {
+    setShowClearModal(false);
+  }, []);
+
   // Sticky Actions Bar
   const ActionsBar = () => (
     <div className="bg-white border-t border-gray-200 p-4 flex-shrink-0">
-      <div className="grid grid-cols-2 gap-3">
+      {/* Show editing indicator when editing from deck */}
+      {editingFromDeck?.itemId && (
+        <div className="mb-3 px-3 py-2 bg-blue-50 border border-blue-200 rounded-lg flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Edit2 size={14} className="text-blue-600" />
+            <span className="text-xs text-blue-700">
+              Editing from deck (Version {editingFromDeck.version || 1})
+            </span>
+          </div>
+          <button
+            onClick={clearEditingFromDeck}
+            className="text-xs text-blue-600 hover:text-blue-800"
+          >
+            Clear
+          </button>
+        </div>
+      )}
+      
+      <div className="grid grid-cols-3 gap-3">
         <button
-          onClick={() => openDeckPicker?.()}
+          onClick={() => editingFromDeck?.itemId ? updateInDeck() : addToDeck?.(post)}
+          className={cx(
+            "flex flex-col items-center gap-1 p-3 rounded-lg transition-colors",
+            editingFromDeck?.itemId 
+              ? "bg-green-500 text-white hover:bg-green-600"
+              : "border border-gray-300 hover:bg-gray-50"
+          )}
+        >
+          {editingFromDeck?.itemId ? (
+            <>
+              <RefreshCw size={16} />
+              <span className="text-xs">Update v{(editingFromDeck.version || 1) + 1}</span>
+            </>
+          ) : (
+            <>
+              <Save size={16} className="text-gray-600" />
+              <span className="text-xs text-gray-700">Add to Deck</span>
+            </>
+          )}
+        </button>
+        
+        <button
+          onClick={handleClearFields}
           className="flex flex-col items-center gap-1 p-3 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
         >
-          <Save size={16} className="text-gray-600" />
-          <span className="text-xs text-gray-700">Save to Deck</span>
+          <RotateCcw size={16} className="text-gray-600" />
+          <span className="text-xs text-gray-700">Clear Fields</span>
         </button>
         
         <button
@@ -295,17 +475,26 @@ const LeftPanel = memo(function LeftPanel(props) {
                   {post.media.map((m, i) => (
                     <div
                       key={i}
+                      draggable
                       className={cx(
-                        "relative rounded-lg overflow-hidden border-2 cursor-pointer transition-all",
+                        "relative rounded-lg overflow-hidden border-2 transition-all",
+                        "cursor-move", // Indicate draggable
                         i === post.activeIndex 
                           ? "border-blue-500 ring-2 ring-blue-200" 
-                          : "border-gray-200 hover:border-gray-300"
+                          : "border-gray-200 hover:border-gray-300",
+                        draggedImageIndex === i && "opacity-50 scale-95", // Visual feedback when dragged
+                        dragOverImageIndex === i && "ring-2 ring-green-400 ring-offset-1" // Visual feedback for drop target
                       )}
                       onClick={() => update({ activeIndex: i })}
+                      onDragStart={(e) => handleImageDragStart(e, i)}
+                      onDragOver={(e) => handleImageDragOver(e, i)}
+                      onDragLeave={handleImageDragLeave}
+                      onDrop={(e) => handleImageDrop(e, i)}
+                      onDragEnd={handleImageDragEnd}
                     >
                       <img src={m} className="w-full h-12 object-cover" alt="" />
                       <button
-                        className="absolute -top-1 -right-1 bg-red-500 text-white rounded-full p-0.5 w-5 h-5 flex items-center justify-center text-xs hover:bg-red-600 transition-colors"
+                        className="absolute -top-1 -right-1 bg-red-500 text-white rounded-full p-0.5 w-5 h-5 flex items-center justify-center text-xs hover:bg-red-600 transition-colors z-10"
                         onClick={(e) => {
                           e.stopPropagation();
                           removeImageAt(i);
@@ -313,6 +502,13 @@ const LeftPanel = memo(function LeftPanel(props) {
                       >
                         ×
                       </button>
+                      
+                      {/* Drag handle indicator (only show on hover) */}
+                      <div className="absolute inset-0 flex items-center justify-center opacity-0 hover:opacity-100 bg-black/20 transition-opacity">
+                        <div className="text-white text-xs font-medium bg-black/50 px-2 py-1 rounded">
+                          Drag to reorder
+                        </div>
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -365,6 +561,78 @@ const LeftPanel = memo(function LeftPanel(props) {
 
       {/* Step 3: Actions (Sticky bottom bar) */}
       <ActionsBar />
+      
+      {/* Clear Confirmation Modal */}
+      {showClearModal && (
+        <ClearFieldsModal
+          onConfirm={handleClearConfirm}
+          onCancel={handleClearCancel}
+        />
+      )}
+    </div>
+  );
+});
+
+// Clear Fields Confirmation Modal Component
+const ClearFieldsModal = memo(function ClearFieldsModal({ onConfirm, onCancel }) {
+  const [dontShowAgain, setDontShowAgain] = useState(false);
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
+      <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-6">
+        <div className="flex items-start gap-3 mb-4">
+          <div className="flex-shrink-0 w-10 h-10 rounded-full bg-orange-100 flex items-center justify-center">
+            <AlertTriangle className="w-5 h-5 text-orange-600" />
+          </div>
+          <div className="flex-1">
+            <h3 className="text-lg font-semibold text-gray-900 mb-2">
+              Clear All Fields?
+            </h3>
+            <p className="text-sm text-gray-600 mb-4">
+              This will clear all your content and start a new post. Your brand selection and platform will be preserved.
+            </p>
+            <div className="bg-gray-50 rounded-lg p-3 mb-4">
+              <div className="text-sm">
+                <div className="font-medium text-gray-700 mb-1">What will be cleared:</div>
+                <ul className="text-gray-600 text-xs space-y-1">
+                  <li>• Post text/caption</li>
+                  <li>• All uploaded images</li>
+                  <li>• Video content</li>
+                  <li>• Link previews</li>
+                </ul>
+              </div>
+            </div>
+          </div>
+        </div>
+        
+        <div className="flex items-center gap-2 mb-6">
+          <input
+            id="dontShowAgain"
+            type="checkbox"
+            checked={dontShowAgain}
+            onChange={(e) => setDontShowAgain(e.target.checked)}
+            className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+          />
+          <label htmlFor="dontShowAgain" className="text-sm text-gray-600">
+            Don't show this again
+          </label>
+        </div>
+        
+        <div className="flex gap-3">
+          <button
+            onClick={onCancel}
+            className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors text-sm font-medium"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={() => onConfirm(dontShowAgain)}
+            className="flex-1 px-4 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 transition-colors text-sm font-medium"
+          >
+            Clear Fields
+          </button>
+        </div>
+      </div>
     </div>
   );
 });

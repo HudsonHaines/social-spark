@@ -12,6 +12,7 @@ import {
   Save,
   X
 } from "lucide-react";
+import { getVideoThumbnail, canPlayVideo } from "../data/videoUtils";
 
 const cx = (...a) => a.filter(Boolean).join(" ");
 
@@ -23,12 +24,16 @@ const DeckStrip = memo(function DeckStrip({
   onDeleteFromDeck,
   onDuplicateToDeck,
   onSaveDeck,
+  onReorderDeck,
+  onPreviewDeck,
 }) {
   const scrollRef = useRef(null);
   const [showSaveModal, setShowSaveModal] = useState(false);
   const [deckName, setDeckName] = useState("");
   const [isSaving, setIsSaving] = useState(false);
   const [showSuccessMessage, setShowSuccessMessage] = useState(false);
+  const [draggedIndex, setDraggedIndex] = useState(null);
+  const [dragOverIndex, setDragOverIndex] = useState(null);
 
   // Auto-scroll to end when new items are added
   useEffect(() => {
@@ -68,7 +73,24 @@ const DeckStrip = memo(function DeckStrip({
       setTimeout(() => setShowSuccessMessage(false), 3000);
     } catch (error) {
       console.error("Failed to save deck:", error);
-      alert("Failed to save deck. Please try again.");
+      
+      // Provide more specific error messages to user
+      let errorMessage = "Failed to save deck. Please try again.";
+      if (error.message) {
+        if (error.message.includes('auth') || error.message.includes('sign')) {
+          errorMessage = "Please sign in to save decks.";
+        } else if (error.message.includes('Deck title is required')) {
+          errorMessage = "Please enter a deck name.";
+        } else if (error.message.includes('Cannot save empty deck')) {
+          errorMessage = "Cannot save an empty deck. Add some posts first.";
+        } else if (error.message.includes('Invalid post data')) {
+          errorMessage = "Some posts have invalid data. Please try recreating them.";
+        } else {
+          errorMessage = `Save failed: ${error.message}`;
+        }
+      }
+      
+      alert(errorMessage);
     } finally {
       setIsSaving(false);
     }
@@ -80,6 +102,61 @@ const DeckStrip = memo(function DeckStrip({
       return;
     }
     setShowSaveModal(true);
+  };
+
+  // Drag and drop handlers
+  const handleDragStart = (e, index) => {
+    setDraggedIndex(index);
+    e.dataTransfer.effectAllowed = 'move';
+    // Set some data to make the drag valid
+    e.dataTransfer.setData('text/plain', index.toString());
+  };
+
+  const handleDragOver = (e, index) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    setDragOverIndex(index);
+  };
+
+  const handleDragLeave = (e) => {
+    // Only clear if we're leaving the container, not moving between items
+    if (!e.currentTarget.contains(e.relatedTarget)) {
+      setDragOverIndex(null);
+    }
+  };
+
+  const handleDrop = (e, dropIndex) => {
+    e.preventDefault();
+    
+    if (draggedIndex === null || draggedIndex === dropIndex) {
+      setDraggedIndex(null);
+      setDragOverIndex(null);
+      return;
+    }
+
+    // Create new array with reordered items
+    const newDeck = [...deck];
+    const draggedItem = newDeck[draggedIndex];
+    
+    // Remove the dragged item
+    newDeck.splice(draggedIndex, 1);
+    
+    // Insert at new position
+    newDeck.splice(dropIndex, 0, draggedItem);
+    
+    // Call the reorder handler if provided
+    if (onReorderDeck) {
+      onReorderDeck(newDeck);
+    }
+    
+    // Reset drag state
+    setDraggedIndex(null);
+    setDragOverIndex(null);
+  };
+
+  const handleDragEnd = () => {
+    setDraggedIndex(null);
+    setDragOverIndex(null);
   };
 
   if (!deck || deck.length === 0) {
@@ -121,6 +198,15 @@ const DeckStrip = memo(function DeckStrip({
           </span>
         </div>
         <div className="flex items-center gap-2">
+          {onPreviewDeck && (
+            <button
+              onClick={onPreviewDeck}
+              className="flex items-center gap-1 px-3 py-1 bg-purple-500 text-white rounded-lg text-xs font-medium hover:bg-purple-600 transition-colors"
+            >
+              <Eye className="w-3 h-3" />
+              Preview
+            </button>
+          )}
           <button
             onClick={handleSaveClick}
             className="flex items-center gap-1 px-3 py-1 bg-green-500 text-white rounded-lg text-xs font-medium hover:bg-green-600 transition-colors"
@@ -174,6 +260,13 @@ const DeckStrip = memo(function DeckStrip({
               onDelete={() => onDeleteFromDeck(item.id)}
               onDuplicate={() => onDuplicateToDeck(item.id)}
               isActive={currentPost?.id === item.id}
+              isDragged={draggedIndex === index}
+              isDragOver={dragOverIndex === index}
+              onDragStart={(e) => handleDragStart(e, index)}
+              onDragOver={(e) => handleDragOver(e, index)}
+              onDragLeave={handleDragLeave}
+              onDrop={(e) => handleDrop(e, index)}
+              onDragEnd={handleDragEnd}
             />
           ))}
           
@@ -253,17 +346,33 @@ const DeckItem = memo(function DeckItem({
   onLoad, 
   onDelete, 
   onDuplicate,
-  isActive 
+  isActive,
+  isDragged,
+  isDragOver,
+  onDragStart,
+  onDragOver,
+  onDragLeave,
+  onDrop,
+  onDragEnd
 }) {
   const { post } = item;
   const hasMedia = post?.media?.length > 0 || post?.videoSrc;
 
   return (
     <div
+      draggable
       className={cx(
-        "relative flex-shrink-0 w-32 group/item cursor-pointer transition-all",
-        isActive && "ring-2 ring-blue-500 rounded-lg"
+        "relative flex-shrink-0 w-32 group/item transition-all",
+        "cursor-move", // Change cursor to indicate draggable
+        isActive && "ring-2 ring-blue-500 rounded-lg",
+        isDragged && "opacity-50 scale-95", // Visual feedback when being dragged
+        isDragOver && "ring-2 ring-green-400 ring-offset-2" // Visual feedback when drag target
       )}
+      onDragStart={onDragStart}
+      onDragOver={onDragOver}
+      onDragLeave={onDragLeave}
+      onDrop={onDrop}
+      onDragEnd={onDragEnd}
       onClick={onLoad}
     >
       {/* Thumbnail */}
@@ -275,9 +384,27 @@ const DeckItem = memo(function DeckItem({
             className="w-full h-full object-cover"
           />
         ) : post?.videoSrc ? (
-          <div className="w-full h-full flex items-center justify-center bg-gray-800">
-            <VideoIcon className="w-6 h-6 text-white" />
-          </div>
+          (() => {
+            const thumbnail = getVideoThumbnail(post);
+            return thumbnail ? (
+              <div className="relative w-full h-full">
+                <img 
+                  src={thumbnail}
+                  alt="Video thumbnail"
+                  className="w-full h-full object-cover"
+                />
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <div className="bg-black/60 rounded-full p-2">
+                    <VideoIcon className="w-4 h-4 text-white" />
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="w-full h-full flex items-center justify-center bg-gray-800">
+                <VideoIcon className="w-6 h-6 text-white" />
+              </div>
+            );
+          })()
         ) : (
           <div className="w-full h-full flex items-center justify-center p-2">
             <div className="text-center">
