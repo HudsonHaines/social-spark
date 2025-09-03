@@ -3,9 +3,11 @@ import React, { useState, memo, useCallback } from "react";
 import { useBrands } from "../data/brands";
 import { useBrandForm, getBrandDisplayName } from "../data/brandShape";
 import BrandFormFields from "./BrandFormFields";
+import { useOrganization } from "../organizations/OrganizationProvider";
 
 const BrandPicker = memo(function BrandPicker({ user, value, onChange }) {
-  const { brands, saveBrand, removeBrand, saving, error } = useBrands(user?.id);
+  const { currentOrganization } = useOrganization();
+  const { brands, saveBrand, removeBrand, saving, error } = useBrands(user?.id, currentOrganization?.id);
   const [showAdd, setShowAdd] = useState(false);
   
   const {

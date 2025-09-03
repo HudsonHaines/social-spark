@@ -17,21 +17,37 @@ function sanitizeBrand(data = {}) {
    Low-level CRUD (Supabase)
    ========================= */
 
-export async function fetchBrands(userId) {
+export async function fetchBrands(userId, organizationId = null) {
   if (!userId) return [];
   if (!supabase) throw new Error("Supabase client is undefined");
 
-  // Fetch all brands globally - no user filtering
-  const { data, error } = await supabase
+  let query = supabase
     .from("brands")
-    .select("*")
+    .select(`
+      *,
+      organizations(name)
+    `)
     .order("created_at", { ascending: false });
+
+  // Handle different contexts
+  if (organizationId === 'ALL') {
+    // Special case: fetch all brands the user has access to (RLS will handle this)
+    // Don't add any filters
+  } else if (organizationId) {
+    // Organization context: fetch only that organization's brands
+    query = query.eq("organization_id", organizationId);
+  } else {
+    // Personal context: fetch only personal brands (organization_id IS NULL)
+    query = query.is("organization_id", null);
+  }
+  
+  const { data, error } = await query;
   
   if (error) throw error;
   return data || [];
 }
 
-export async function upsertBrand(userId, brand) {
+export async function upsertBrand(userId, brand, organizationId = null) {
   if (!userId) throw new Error("Missing userId");
   if (!supabase) throw new Error("Supabase client is undefined");
   
@@ -50,6 +66,7 @@ export async function upsertBrand(userId, brand) {
     ig_username: clean.ig_username,
     ig_avatar_url: clean.ig_avatar_url,
     verified: clean.verified,
+    organization_id: organizationId, // Add organization context
     updated_at: new Date().toISOString(),
   };
 
@@ -111,9 +128,9 @@ export async function deleteBrand(userId, id) {
    React Hook
    ========================= */
 
-export function useBrands(userId) {
+export function useBrands(userId, organizationId = null) {
   const [brands, setBrands] = useState([]);
-  const [loading, setLoading] = useState(true); // Always load brands, regardless of userId
+  const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
@@ -133,8 +150,8 @@ export function useBrands(userId) {
       try {
         setLoading(true);
         setError("");
-        // Load brands even without userId (for global access)
-        const rows = await fetchBrands(userId || "anonymous");
+        // Load brands with organization context
+        const rows = await fetchBrands(userId || "anonymous", organizationId);
         if (!cancelled) setBrands(rows);
       } catch (e) {
         console.error("[useBrands] fetch error:", e);
@@ -148,7 +165,7 @@ export function useBrands(userId) {
     return () => {
       cancelled = true;
     };
-  }, []); // Remove userId dependency since brands are now global
+  }, [userId, organizationId]); // Update dependencies to include organizationId
 
   // realtime (global subscription)
   useEffect(() => {
@@ -207,7 +224,7 @@ export function useBrands(userId) {
           throw new Error(firstError || "Invalid brand data");
         }
         
-        const saved = await upsertBrand(userId, brandInput);
+        const saved = await upsertBrand(userId, brandInput, organizationId);
         
         // Update brand list optimistically
         setBrands((prev) => {
@@ -231,7 +248,7 @@ export function useBrands(userId) {
         setSaving(false);
       }
     },
-    [userId]
+    [userId, organizationId]
   );
 
   const removeBrand = useCallback(
@@ -256,7 +273,7 @@ export function useBrands(userId) {
         setSaving(false);
       }
     },
-    [userId]
+    [userId, organizationId]
   );
 
   const reload = useCallback(async () => {

@@ -17,6 +17,8 @@ import {
   RefreshCw,
 } from "lucide-react";
 import { useBrands } from "../data/brands";
+import InvitationNotifications from "../organizations/InvitationNotifications";
+import { useOrganization } from "../organizations/OrganizationProvider";
 
 const cx = (...a) => a.filter(Boolean).join(" ");
 
@@ -158,7 +160,8 @@ const LeftPanel = memo(function LeftPanel(props) {
   if (!post) return null;
 
   // Supabase brands
-  const { brands: brandRows } = useBrands(user?.id);
+  const { currentOrganization } = useOrganization();
+  const { brands: brandRows } = useBrands(user?.id, currentOrganization?.id);
 
   // Resolve a safe brand id whether state uses brandId or brand.id
   const safeBrandId = useMemo(

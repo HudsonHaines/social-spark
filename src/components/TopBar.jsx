@@ -3,6 +3,7 @@ import React, { memo } from "react";
 import { Menu } from "lucide-react";
 import ProfileButton from "../profile/ProfileButton";
 import { useProfile } from "../profile/ProfileProvider";
+import InvitationNotifications from "../organizations/InvitationNotifications";
 
 const TopBar = memo(function TopBar({
   onOpenMenu = () => {},
@@ -49,6 +50,7 @@ const TopBar = memo(function TopBar({
 
         {/* Right cluster */}
         <div className="flex items-center gap-2">
+          <InvitationNotifications />
           <ProfileButton />
         </div>
       </div>

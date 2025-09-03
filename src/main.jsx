@@ -7,6 +7,7 @@ import App from "./App.jsx";
 import AuthProvider from "./auth/AuthProvider.jsx";
 import AuthGate from "./auth/AuthGate.jsx";
 import ProfileProvider from "./profile/ProfileProvider.jsx";
+import { OrganizationProvider } from "./organizations/OrganizationProvider.jsx";
 
 // Lazy load ShareViewer for /s/:token
 const ShareViewer = React.lazy(() => import("./share/ShareViewer.jsx"));
@@ -46,9 +47,11 @@ function Router() {
   return (
     <AuthProvider>
       <ProfileProvider>
-        <AuthGate>
-          <App />
-        </AuthGate>
+        <OrganizationProvider>
+          <AuthGate>
+            <App />
+          </AuthGate>
+        </OrganizationProvider>
       </ProfileProvider>
     </AuthProvider>
   );

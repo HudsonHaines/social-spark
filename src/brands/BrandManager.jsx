@@ -4,6 +4,7 @@ import { useBrands } from "../data/brands";
 import { useBrandForm, validateBrandForm } from "../data/brandShape";
 import BrandFormFields from "../components/BrandFormFields";
 import BrandCard from "../components/BrandCard";
+import { useOrganization } from "../organizations/OrganizationProvider";
 
 const Banner = memo(function Banner({ kind = "info", children }) {
   const cls =
@@ -17,9 +18,10 @@ const Banner = memo(function Banner({ kind = "info", children }) {
 
 const BrandManager = memo(function BrandManager({ user, open, onClose }) {
   const userId = user?.id || null;
+  const { currentOrganization } = useOrganization();
   if (!open || !userId) return null;
 
-  const { brands, saveBrand, removeBrand, saving, error: hookError } = useBrands(userId);
+  const { brands, saveBrand, removeBrand, saving, error: hookError } = useBrands(userId, currentOrganization?.id);
   const {
     form,
     errors,

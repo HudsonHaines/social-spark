@@ -3,6 +3,7 @@ import { useAuth } from "../auth/AuthProvider";
 import { useProfile } from "./ProfileProvider";
 import ProfileSettingsModal from "./ProfileSettingsModal";
 import ChangePasswordModal from "./ChangePasswordModal";
+import OrganizationManager from "../organizations/OrganizationManager";
 
 export default function ProfileButton() {
   const { user, signOut } = useAuth();
@@ -10,6 +11,7 @@ export default function ProfileButton() {
   const [open, setOpen] = useState(false);
   const [profileModalOpen, setProfileModalOpen] = useState(false);
   const [passwordModalOpen, setPasswordModalOpen] = useState(false);
+  const [organizationModalOpen, setOrganizationModalOpen] = useState(false);
   const ref = useRef(null);
 
   const displayName = profile?.display_name;
@@ -29,6 +31,11 @@ export default function ProfileButton() {
 
   const handleChangePassword = useCallback(() => {
     setPasswordModalOpen(true);
+    setOpen(false);
+  }, []);
+
+  const handleOrganizations = useCallback(() => {
+    setOrganizationModalOpen(true);
     setOpen(false);
   }, []);
 
@@ -88,6 +95,9 @@ export default function ProfileButton() {
                   Change Password
                 </button>
               )}
+              <button onClick={handleOrganizations} className="w-full text-left px-3 py-2 text-sm hover:bg-app-muted transition">
+                Organizations
+              </button>
               <div className="border-t border-app mt-1 pt-1">
                 <button onClick={handleSignOut} className="w-full text-left px-3 py-2 text-sm text-red-600 hover:bg-red-50 transition">
                   Sign Out
@@ -108,6 +118,11 @@ export default function ProfileButton() {
       <ChangePasswordModal 
         open={passwordModalOpen} 
         onClose={() => setPasswordModalOpen(false)} 
+      />
+      
+      <OrganizationManager
+        open={organizationModalOpen}
+        onClose={() => setOrganizationModalOpen(false)}
       />
     </div>
   );

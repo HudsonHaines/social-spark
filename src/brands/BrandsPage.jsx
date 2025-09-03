@@ -5,6 +5,8 @@ import { ArrowLeft, Plus } from "lucide-react";
 import { useBrands } from "../data/brands";
 import { getBrandDisplayName, getBrandSecondaryText } from "../data/brandShape";
 import BrandCard from "../components/BrandCard";
+import { useOrganization } from "../organizations/OrganizationProvider";
+import OrganizationSwitcher from "../organizations/OrganizationSwitcher";
 
 const cx = (...a) => a.filter(Boolean).join(" ");
 
@@ -13,7 +15,8 @@ const BrandsPage = memo(function BrandsPage({
   onBack,
   onOpenBrandManager,
 }) {
-  const { brands, saveBrand, removeBrand, loading, error } = useBrands(userId);
+  const { currentOrganization, isPersonalContext } = useOrganization();
+  const { brands, saveBrand, removeBrand, loading, error } = useBrands(userId, currentOrganization?.id);
   const [searchQuery, setSearchQuery] = useState("");
 
   // Error display
@@ -78,16 +81,21 @@ const BrandsPage = memo(function BrandsPage({
   }, [brands, searchQuery]);
 
   return (
-    <div className="panel w-full overflow-hidden flex flex-col">
+    <div className="panel w-full overflow-visible flex flex-col">
       <div className="panel-header flex items-center justify-between">
         <div className="flex items-center gap-2">
           <button className="btn-outline" onClick={onBack}>
             <ArrowLeft className="w-4 h-4 mr-1" />
             Back
           </button>
-          <div className="font-medium text-app-strong">Manage brands</div>
+          <div className="font-medium text-app-strong">
+            Manage brands {isPersonalContext ? '(Personal)' : `(${currentOrganization?.name})`}
+          </div>
         </div>
         <div className="flex items-center gap-2">
+          <div className="relative z-50">
+            <OrganizationSwitcher />
+          </div>
           <input
             className="input"
             placeholder="Search brands"
