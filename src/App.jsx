@@ -79,6 +79,7 @@ export default function App() {
   // Core editor state
   const [post, setPost] = useState(() => ensurePostShape(emptyPost));
   const [localDeck, setLocalDeck] = useState([]);
+  const [showDeckStrip, setShowDeckStrip] = useState(false);
   
   // App navigation state
   const [appState, setAppState] = useState({
@@ -182,7 +183,7 @@ export default function App() {
       const prev = ensurePostShape(p);
       const media = [...(prev.media || []), ...datas].slice(0, 5);
       const nextType = prev.type === "video" ? "single" : media.length > 1 ? "carousel" : "single";
-      const meta = Array.from({ length: media.length }, (_, i) => prev.mediaMeta?.[i] || { headline: "" });
+      const meta = Array.from({ length: media.length }, (_, i) => prev.mediaMeta?.[i] || { headline: "", subhead: "" });
       return ensurePostShape({
         ...prev,
         media,
@@ -250,13 +251,39 @@ export default function App() {
     [processImageFiles, processVideoFile]
   );
 
+  // Start deck without adding anything
+  const startDeckBuilding = useCallback(() => {
+    setShowDeckStrip(true);
+  }, []);
+
   // Local deck operations
   const addToDeck = useCallback(
-    (p) => {
+    async (p) => {
+      setShowDeckStrip(true); // Also show deck strip when adding posts
+      
+      let processedPost = ensurePostShape(p || post);
+      
+      // Process video if present to extract thumbnail
+      if (processedPost.videoSrc && processedPost.videoSrc.startsWith('data:video/')) {
+        console.log('🎬 Processing video for local deck...');
+        try {
+          const videoData = await processVideoForDeck(processedPost.videoSrc);
+          processedPost = {
+            ...processedPost,
+            videoThumbnail: videoData.thumbnail,
+            videoMetadata: videoData.metadata
+          };
+          console.log('✅ Video processed for local deck, thumbnail extracted');
+        } catch (error) {
+          console.error('❌ Failed to process video for local deck:', error);
+          // Continue without thumbnail - will use placeholder
+        }
+      }
+      
       const item = {
         id: uid(),
         createdAt: Date.now(),
-        post: ensurePostShape(p || post),
+        post: processedPost,
       };
       setLocalDeck((d) => [item, ...d]);
     },
@@ -434,7 +461,7 @@ export default function App() {
     <Fragment>
       <AppShell
         user={authenticatedUser}
-        showDeckStrip={appState.page === "editor"}
+        showDeckStrip={appState.page === "editor" && (showDeckStrip || localDeck.length > 0)}
         topBarProps={{
           user: authenticatedUser,
           onOpenMenu: () => setUiState(prev => ({ ...prev, menuOpen: true })),
@@ -442,6 +469,7 @@ export default function App() {
         deckStripProps={{
           deck: localDeck,
           currentPost: post,
+          onStartDeckBuilding: startDeckBuilding,
           onAddToDeck: addToDeck,
           onLoadFromDeck: loadFromDeck,
           onDeleteFromDeck: deleteFromDeck,
@@ -499,7 +527,8 @@ export default function App() {
                   const sanitizedPost = {
                     ...postWithUploadedMedia,
                     mediaMeta: postWithUploadedMedia.mediaMeta?.map(meta => ({
-                      headline: meta?.headline || ''
+                      headline: meta?.headline || '',
+                      subhead: meta?.subhead || ''
                     })) || [],
                     brand: postWithUploadedMedia.brand ? {
                       id: postWithUploadedMedia.brand.id || null,
@@ -581,7 +610,8 @@ export default function App() {
                       videoSrc: compressedVideoSrc,
                       videoThumbnail: videoThumbnail,
                       mediaMeta: cleanPost.mediaMeta?.map(meta => ({
-                        headline: meta?.headline || ''
+                        headline: meta?.headline || '',
+                        subhead: meta?.subhead || ''
                       })) || [],
                       brand: cleanPost.brand ? {
                         id: cleanPost.brand.id || null,

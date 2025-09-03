@@ -350,15 +350,30 @@ export async function uploadPostMedia(post, userId, onProgress = null) {
     }
     
     // Process and upload video if present
+    console.log('🎥 Checking video for processing:', {
+      hasVideoSrc: !!post.videoSrc,
+      videoSrcType: typeof post.videoSrc,
+      isDataURL: post.videoSrc?.startsWith('data:'),
+      videoPrefix: post.videoSrc?.substring(0, 50) + '...'
+    });
+    
     if (post.videoSrc && post.videoSrc.startsWith('data:')) {
+      console.log('🚀 Starting video processing and upload...');
       currentItem++;
       if (onProgress) {
         onProgress(currentItem, totalItems, 'Processing video...');
       }
       
       try {
+        console.log('📹 Calling processVideoForDeck...');
         // Process video to extract thumbnail and metadata
         const videoData = await processVideoForDeck(post.videoSrc);
+        console.log('✅ processVideoForDeck completed:', {
+          hasVideoSrc: !!videoData.videoSrc,
+          hasThumbnail: !!videoData.thumbnail,
+          hasMetadata: !!videoData.metadata,
+          thumbnailSize: videoData.thumbnail ? (videoData.thumbnail.length / 1024).toFixed(1) + 'KB' : 'N/A'
+        });
         
         if (onProgress) {
           onProgress(currentItem, totalItems, 'Uploading video...');

@@ -1,5 +1,5 @@
 // src/components/InstagramPost.jsx
-import React, { useState, useCallback } from "react";
+import React, { useState, useCallback, useRef, useEffect, useMemo } from "react";
 import { 
   Heart, 
   MessageCircle, 
@@ -8,7 +8,11 @@ import {
   MoreHorizontal,
   ChevronLeft,
   ChevronRight,
-  Smile
+  Smile,
+  Play,
+  Pause,
+  Volume2,
+  VolumeX
 } from "lucide-react";
 
 const cx = (...a) => a.filter(Boolean).join(" ");
@@ -17,11 +21,18 @@ export default function InstagramPost({
   post, 
   previewRef,
   videoRef,
-  aspectClass = "aspect-square"
+  aspectClass = "aspect-square",
+  mode = "create"
 }) {
   const [liked, setLiked] = useState(false);
   const [bookmarked, setBookmarked] = useState(false);
   const [currentIndex, setCurrentIndex] = useState(post.activeIndex || 0);
+  
+  // Video controls state
+  const [isPlaying, setIsPlaying] = useState(true);
+  const [isMuted, setIsMuted] = useState(true);
+  const [showControls, setShowControls] = useState(false);
+  const internalVideoRef = useRef(null);
   
   const mediaCount = post.media?.length || 0;
   const hasMultipleMedia = mediaCount > 1 && post.type !== "video";
@@ -34,12 +45,68 @@ export default function InstagramPost({
     setCurrentIndex((prev) => (prev + 1) % mediaCount);
   }, [mediaCount]);
 
+  // Video control handlers
+  const togglePlayPause = useCallback(() => {
+    const video = videoRef?.current || internalVideoRef.current;
+    if (!video) return;
+
+    if (isPlaying) {
+      video.pause();
+      setIsPlaying(false);
+    } else {
+      video.play();
+      setIsPlaying(true);
+    }
+  }, [isPlaying, videoRef]);
+
+  const toggleMute = useCallback(() => {
+    const video = videoRef?.current || internalVideoRef.current;
+    if (!video) return;
+
+    video.muted = !isMuted;
+    setIsMuted(!isMuted);
+  }, [isMuted, videoRef]);
+
+  // Handle video events
+  useEffect(() => {
+    const video = videoRef?.current || internalVideoRef.current;
+    if (!video || post.type !== "video") return;
+
+    const handlePlay = () => setIsPlaying(true);
+    const handlePause = () => setIsPlaying(false);
+
+    video.addEventListener('play', handlePlay);
+    video.addEventListener('pause', handlePause);
+
+    return () => {
+      video.removeEventListener('play', handlePlay);
+      video.removeEventListener('pause', handlePause);
+    };
+  }, [post.type, videoRef]);
+
   const formatNumber = (num) => {
     if (!num) return "0";
     if (num >= 1000000) return `${(num / 1000000).toFixed(1)}M`;
     if (num >= 1000) return `${(num / 1000).toFixed(1)}K`;
     return num.toString();
   };
+
+  // Instagram videos should always be square regardless of original dimensions
+  const normalizedAspectClass = useMemo(() => {
+    console.log('🔧 InstagramPost normalizedAspectClass debug:', {
+      hasVideoSrc: !!post.videoSrc,
+      type: post.type,
+      originalAspectClass: aspectClass,
+      videoSrcPrefix: post.videoSrc?.substring(0, 30) + '...'
+    });
+    
+    if (post.type === "video" || post.videoSrc) {
+      console.log('✅ Instagram video detected, forcing aspect-square');
+      return "aspect-square";
+    }
+    console.log('📝 Instagram non-video, using original aspect:', aspectClass);
+    return aspectClass;
+  }, [post.type, post.videoSrc, aspectClass]);
 
   return (
     <div ref={previewRef} className="bg-white w-full instagram-post">
@@ -92,18 +159,60 @@ export default function InstagramPost({
       </div>
 
       {/* Media Section */}
-      <div className={cx("relative bg-black", aspectClass)}>
+      <div 
+        className={cx("relative bg-black group", normalizedAspectClass)}
+        onMouseEnter={() => post.type === "video" && setShowControls(true)}
+        onMouseLeave={() => post.type === "video" && setShowControls(false)}
+        onTouchStart={() => post.type === "video" && setShowControls(true)}
+        onTouchEnd={() => post.type === "video" && setTimeout(() => setShowControls(false), 3000)}
+      >
         {post.type === "video" && post.videoSrc ? (
-          <video
-            ref={videoRef}
-            src={post.videoSrc}
-            className="absolute inset-0 w-full h-full object-cover"
-            controls={false}
-            muted
-            loop
-            playsInline
-            autoPlay
-          />
+          <>
+            <video
+              ref={videoRef || internalVideoRef}
+              src={post.videoSrc}
+              className="absolute inset-0 w-full h-full object-cover"
+              controls={false}
+              muted={isMuted}
+              loop
+              playsInline
+              autoPlay={isPlaying}
+              onClick={togglePlayPause}
+            />
+            
+            {/* Video Controls Overlay */}
+            <div className={cx(
+              "absolute inset-0 bg-black/10 flex items-center justify-center transition-opacity duration-200",
+              showControls ? "opacity-100" : "opacity-0"
+            )}>
+              {/* Play/Pause Button */}
+              <button
+                onClick={togglePlayPause}
+                className="w-16 h-16 bg-black/60 rounded-full flex items-center justify-center hover:bg-black/80 transition-colors"
+              >
+                {isPlaying ? (
+                  <Pause className="w-8 h-8 text-white" />
+                ) : (
+                  <Play className="w-8 h-8 text-white ml-1" />
+                )}
+              </button>
+            </div>
+            
+            {/* Mute Button */}
+            <button
+              onClick={toggleMute}
+              className={cx(
+                "absolute top-4 right-4 w-10 h-10 bg-black/60 rounded-full flex items-center justify-center hover:bg-black/80 transition-all duration-200",
+                showControls ? "opacity-100" : "opacity-0"
+              )}
+            >
+              {isMuted ? (
+                <VolumeX className="w-5 h-5 text-white" />
+              ) : (
+                <Volume2 className="w-5 h-5 text-white" />
+              )}
+            </button>
+          </>
         ) : mediaCount > 0 ? (
           <>
             <img

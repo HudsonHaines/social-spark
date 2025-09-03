@@ -431,7 +431,7 @@ const LeftPanel = memo(function LeftPanel(props) {
 
           {/* Media Upload - Simplified */}
           <WorkflowStep title="📷 Add Media">
-            {/* Drag and Drop Zone */}
+            {/* Drag and Drop Zone with Upload Button */}
             <div
               onDragOver={(e) => {
                 e.preventDefault();
@@ -442,7 +442,40 @@ const LeftPanel = memo(function LeftPanel(props) {
             >
               <ImageIcon className="w-12 h-12 mx-auto mb-3 text-gray-400" />
               <p className="text-sm font-medium text-gray-700 mb-2">Drag and drop your media here</p>
-              <p className="text-xs text-gray-500">Supports images and videos up to 10MB</p>
+              <p className="text-xs text-gray-500 mb-3">Supports images and videos up to 10MB</p>
+              
+              {/* Upload Button */}
+              <div className="flex items-center justify-center gap-2 text-xs text-gray-500">
+                <span>or</span>
+                <button
+                  onClick={() => document.getElementById('media-file-input').click()}
+                  className="text-blue-600 hover:text-blue-800 underline font-medium"
+                >
+                  browse files
+                </button>
+              </div>
+              
+              {/* Hidden File Input */}
+              <input
+                id="media-file-input"
+                type="file"
+                multiple
+                accept="image/*,video/*"
+                onChange={(e) => {
+                  const files = Array.from(e.target.files);
+                  if (files.length > 0) {
+                    // Create a fake drop event object to match onDrop expectations
+                    const fakeDropEvent = {
+                      preventDefault: () => {},
+                      stopPropagation: () => {},
+                      dataTransfer: { files }
+                    };
+                    onDrop(fakeDropEvent);
+                  }
+                  e.target.value = ''; // Reset input
+                }}
+                className="hidden"
+              />
             </div>
 
             {/* Media Preview - Compact */}
@@ -514,6 +547,54 @@ const LeftPanel = memo(function LeftPanel(props) {
                 </div>
               </div>
             ) : null}
+
+            {/* Carousel Card Headlines/Subheadlines */}
+            {post.media?.length > 1 && (
+              <div className="mt-4">
+                <h4 className="text-sm font-medium text-gray-700 mb-3">Card Headlines & Subheadlines</h4>
+                <div className="space-y-3">
+                  {post.media.map((_, i) => (
+                    <div key={i} className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg">
+                      <div className="flex-shrink-0">
+                        <img src={post.media[i]} className="w-12 h-12 object-cover rounded border" alt="" />
+                      </div>
+                      <div className="flex-1 space-y-2">
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs font-medium text-gray-500 bg-white px-2 py-1 rounded">
+                            Card {i + 1}
+                          </span>
+                          {i === post.activeIndex && (
+                            <span className="text-xs text-blue-600 font-medium">Active</span>
+                          )}
+                        </div>
+                        <input
+                          type="text"
+                          placeholder="Headline"
+                          value={post.mediaMeta?.[i]?.headline || ""}
+                          onChange={(e) => {
+                            const newMeta = [...(post.mediaMeta || [])];
+                            newMeta[i] = { ...(newMeta[i] || {}), headline: e.target.value };
+                            update({ mediaMeta: newMeta });
+                          }}
+                          className="w-full text-xs border border-gray-300 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                        />
+                        <input
+                          type="text"
+                          placeholder="Subheadline"
+                          value={post.mediaMeta?.[i]?.subhead || ""}
+                          onChange={(e) => {
+                            const newMeta = [...(post.mediaMeta || [])];
+                            newMeta[i] = { ...(newMeta[i] || {}), subhead: e.target.value };
+                            update({ mediaMeta: newMeta });
+                          }}
+                          className="w-full text-xs border border-gray-300 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                        />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </WorkflowStep>
 
 
@@ -521,18 +602,30 @@ const LeftPanel = memo(function LeftPanel(props) {
           {post.platform === "facebook" && (
             <CollapsibleSection title="🔗 Link Preview (Facebook)">
               <div className="space-y-3">
-                <input
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
-                  placeholder="Headline"
-                  value={post.link?.headline || ""}
-                  onChange={(e) => update({ link: { ...(post.link || {}), headline: e.target.value } })}
-                />
-                <input
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
-                  placeholder="Subhead"
-                  value={post.link?.subhead || ""}
-                  onChange={(e) => update({ link: { ...(post.link || {}), subhead: e.target.value } })}
-                />
+                {/* Only show headline/subhead inputs for non-carousel posts */}
+                {post.media?.length <= 1 && (
+                  <>
+                    <input
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                      placeholder="Headline"
+                      value={post.link?.headline || ""}
+                      onChange={(e) => update({ link: { ...(post.link || {}), headline: e.target.value } })}
+                    />
+                    <input
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                      placeholder="Subhead"
+                      value={post.link?.subhead || ""}
+                      onChange={(e) => update({ link: { ...(post.link || {}), subhead: e.target.value } })}
+                    />
+                  </>
+                )}
+                
+                {/* For carousel posts, show note about per-card headlines */}
+                {post.media?.length > 1 && (
+                  <div className="text-xs text-gray-500 bg-blue-50 p-2 rounded">
+                    💡 Headlines & subheadlines are set per card above. This link preview applies to all cards.
+                  </div>
+                )}
                 <div className="flex gap-2">
                   <input
                     className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm"

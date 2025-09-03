@@ -1,6 +1,6 @@
 // src/components/RightPreview.jsx
 import React, { forwardRef, useCallback, useEffect, useMemo } from "react";
-import { ensurePostShape } from "../data/postShape";
+import { ensurePostShape, emptyPost } from "../data/postShape";
 import { useExportStability } from "../hooks/useExportStability";
 import { canPlayVideo, getVideoThumbnail } from "../data/videoUtils";
 import InstagramPost from "./InstagramPost";
@@ -42,19 +42,49 @@ const RightPreview = forwardRef(function RightPreview(
 
   const aspectClass = getAspectClass(aspectRatio);
 
+  // Normalize aspect ratio for consistent presentation sizing
+  const normalizedAspectClass = useMemo(() => {
+    console.log('🔧 RightPreview normalizedAspectClass debug:', {
+      mode,
+      hasVideoSrc: !!normalizedPost.videoSrc,
+      type: normalizedPost.type,
+      platform: normalizedPost.platform,
+      platformIsInstagram: normalizedPost.platform === "instagram",
+      originalAspectClass: aspectClass,
+      videoSrcPrefix: normalizedPost.videoSrc?.substring(0, 30) + '...'
+    });
+    
+    // In present mode, make everything uniform for consistent presentation
+    if (mode === "present") {
+      console.log('📺 Present mode: using square aspect for all posts to ensure uniform sizing');
+      return "aspect-square";
+    }
+    
+    // In create mode, normalize videos to platform standards
+    if (normalizedPost.type === "video" || normalizedPost.videoSrc) {
+      // Both Instagram and Facebook feed videos are typically square (1:1)
+      const result = "aspect-square";
+      console.log(`✅ Video detected, platform: "${normalizedPost.platform}", using square aspect for platform consistency`);
+      return result;
+    }
+    
+    console.log('📝 Create mode non-video, using original aspect:', aspectClass);
+    return aspectClass;
+  }, [mode, normalizedPost.type, normalizedPost.videoSrc, normalizedPost.platform, aspectClass]);
+
   // Enhanced dynamic sizing based on aspect ratio and viewport - maximized for better visibility
   const dynamicSizing = useMemo(() => {
     const isPortrait = aspectRatio === "9:16" || aspectRatio === "4:5";
     const isLandscape = aspectRatio === "16:9" || aspectRatio === "1.91:1";
 
     if (mode === "present") {
-      // Don't constrain height - let content flow naturally with scroll
+      // Let content flow naturally without height constraints
       if (isPortrait) {
-        return { maxWidth: "min(480px, 90%)" };
+        return { maxWidth: "100%", width: "100%" };
       } else if (isLandscape) {
-        return { maxWidth: "min(650px, 95%)" };
+        return { maxWidth: "100%", width: "100%" };
       } else {
-        return { maxWidth: "min(520px, 90%)" };
+        return { maxWidth: "100%", width: "100%" };
       }
     } else {
       // Create mode - maximized for better editing experience
@@ -111,15 +141,8 @@ const RightPreview = forwardRef(function RightPreview(
   const handlePrevious = useCallback(() => navigateCarousel('prev'), [navigateCarousel]);
   const handleNext = useCallback(() => navigateCarousel('next'), [navigateCarousel]);
 
-  useEffect(() => {
-    if (mode !== "present") return;
-    const handleKeyDown = (e) => {
-      if (e.key === "ArrowLeft") handlePrevious();
-      if (e.key === "ArrowRight") handleNext();
-    };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [mode, handlePrevious, handleNext]);
+  // Removed keyboard navigation in present mode to avoid conflicts
+  // Carousel navigation is now click-only with visible arrow buttons
 
   useEffect(() => {
     if (attachNode && previewRef?.current) {
@@ -140,7 +163,8 @@ const RightPreview = forwardRef(function RightPreview(
                 post={normalizedPost}
                 previewRef={previewRef}
                 videoRef={videoRef}
-                aspectClass={aspectClass}
+                aspectClass={normalizedAspectClass}
+                mode={mode}
               />
             ) : (
             <div ref={previewRef} className={cx(
@@ -199,7 +223,7 @@ const RightPreview = forwardRef(function RightPreview(
                 <div
                   className={cx(
                     "relative bg-black overflow-hidden",
-                    aspectClass
+                    normalizedAspectClass
                   )}
                 >
                   {normalizedPost.type === "video" && normalizedPost.videoSrc ? (
@@ -271,20 +295,13 @@ const RightPreview = forwardRef(function RightPreview(
                     </div>
                   )}
 
-                  {normalizedPost.type !== "video" &&
-                  mediaCount > 0 &&
-                  (normalizedPost.mediaMeta?.[currentIndex]?.headline || "").trim() ? (
-                    <div className="absolute left-3 top-3 bg-white/90 px-2 py-1 rounded shadow text-sm">
-                      {normalizedPost.mediaMeta[currentIndex].headline}
-                    </div>
-                  ) : null}
 
                   {normalizedPost.type !== "video" && mediaCount > 1 ? (
-                    <div className="absolute inset-0 p-2 pointer-events-none">
+                    <div className="absolute inset-0 p-2 pointer-events-none z-10">
                       <div className="h-full flex items-center justify-between">
                         <button
                           type="button"
-                          className="pointer-events-auto w-8 h-8 rounded-full bg-white/90 ring-1 ring-black/10 flex items-center justify-center"
+                          className="pointer-events-auto w-8 h-8 rounded-full bg-white/90 hover:bg-white ring-1 ring-black/10 flex items-center justify-center transition-colors"
                           onClick={handlePrevious}
                           aria-label="Previous"
                         >
@@ -292,7 +309,7 @@ const RightPreview = forwardRef(function RightPreview(
                         </button>
                         <button
                           type="button"
-                          className="pointer-events-auto w-8 h-8 rounded-full bg-white/90 ring-1 ring-black/10 flex items-center justify-center"
+                          className="pointer-events-auto w-8 h-8 rounded-full bg-white/90 hover:bg-white ring-1 ring-black/10 flex items-center justify-center transition-colors"
                           onClick={handleNext}
                           aria-label="Next"
                         >
@@ -317,7 +334,8 @@ const RightPreview = forwardRef(function RightPreview(
               </div>
 
               {normalizedPost.platform === "facebook" &&
-              (normalizedPost.link?.headline || normalizedPost.link?.subhead || normalizedPost.link?.url) ? (
+              (normalizedPost.link?.headline || normalizedPost.link?.subhead || normalizedPost.link?.url || 
+               (mediaCount > 1 && (normalizedPost.mediaMeta?.[currentIndex]?.headline || normalizedPost.mediaMeta?.[currentIndex]?.subhead))) ? (
                 <div className="border-t border-gray-200">
                   <a
                     href={normalizedPost.link?.url || "#"}
@@ -331,10 +349,14 @@ const RightPreview = forwardRef(function RightPreview(
                     </div>
                     <div className="px-4 py-3">
                       <div className="link-headline text-gray-900 font-medium text-base leading-snug mb-1">
-                        {normalizedPost.link?.headline || "Link headline"}
+                        {mediaCount > 1 
+                          ? (normalizedPost.mediaMeta?.[currentIndex]?.headline || "Card headline")
+                          : (normalizedPost.link?.headline || "Link headline")}
                       </div>
                       <div className="link-subhead text-sm text-gray-600 leading-normal">
-                        {normalizedPost.link?.subhead || "Add a subhead"}
+                        {mediaCount > 1 
+                          ? (normalizedPost.mediaMeta?.[currentIndex]?.subhead || "Add card subhead")
+                          : (normalizedPost.link?.subhead || "Add a subhead")}
                       </div>
                       <div className="mt-3 flex items-center justify-between">
                         <div className="flex items-center">

@@ -17,7 +17,7 @@ export const emptyMetrics = Object.freeze({
   likes: 128, comments: 24, shares: 12, saves: 9, views: 10234 
 });
 
-const emptyMediaMetaEntry = Object.freeze({ headline: "" });
+const emptyMediaMetaEntry = Object.freeze({ headline: "", subhead: "" });
 
 export const emptyPost = Object.freeze({
   id: null,
@@ -66,7 +66,8 @@ function normalizeMedia(media) {
 function normalizeMediaMeta(mediaMeta, mediaLength) {
   const srcMeta = isValidArray(mediaMeta) ? mediaMeta : [];
   return Array.from({ length: mediaLength }, (_, i) => ({
-    headline: isValidString(srcMeta[i]?.headline) ? srcMeta[i].headline : ""
+    headline: isValidString(srcMeta[i]?.headline) ? srcMeta[i].headline : "",
+    subhead: isValidString(srcMeta[i]?.subhead) ? srcMeta[i].subhead : ""
   }));
 }
 

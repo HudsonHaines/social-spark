@@ -1,5 +1,6 @@
 // src/components/MenuDrawer.jsx
 import React, { useEffect } from "react";
+import { useProfile } from "../profile/ProfileProvider";
 
 export default function MenuDrawer({
   open,
@@ -9,6 +10,8 @@ export default function MenuDrawer({
   onOpenShareLinks,  // go to Share Links page
   onOpenCreate,      // go to Create/Editor page
 }) {
+  const { profile } = useProfile();
+  const displayName = profile?.display_name;
   useEffect(() => {
     if (!open) return;
     const onKey = (e) => e.key === "Escape" && onClose?.();
@@ -29,7 +32,19 @@ export default function MenuDrawer({
                    transform transition-transform duration-200 ease-out translate-x-0"
       >
         <div className="flex items-center justify-between px-4 h-14 border-b">
-          <div className="font-medium">Menu</div>
+          <div className="flex items-center gap-2">
+            <img 
+              src="/social-spark-logo.png" 
+              alt="Social Spark" 
+              className="w-5 h-5"
+            />
+            <div>
+              <div className="font-medium">Social Spark</div>
+              {displayName && (
+                <div className="text-xs text-gray-500">{displayName}</div>
+              )}
+            </div>
+          </div>
           <button className="btn-outline" onClick={onClose} aria-label="Close menu">
             Close
           </button>

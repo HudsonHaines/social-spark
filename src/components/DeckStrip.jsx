@@ -19,6 +19,7 @@ const cx = (...a) => a.filter(Boolean).join(" ");
 const DeckStrip = memo(function DeckStrip({
   deck = [],
   currentPost,
+  onStartDeckBuilding,
   onAddToDeck,
   onLoadFromDeck,
   onDeleteFromDeck,
@@ -164,7 +165,7 @@ const DeckStrip = memo(function DeckStrip({
       <div className="bg-gray-50 border-b border-gray-200 px-4 py-3">
         <div className="flex items-center gap-3">
           <button
-            onClick={onAddToDeck}
+            onClick={onStartDeckBuilding}
             className="flex items-center gap-2 px-4 py-2 bg-blue-500 text-white rounded-lg text-sm font-medium hover:bg-blue-600 transition-colors"
           >
             <Plus className="w-4 h-4" />

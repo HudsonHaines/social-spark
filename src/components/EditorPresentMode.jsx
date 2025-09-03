@@ -22,7 +22,15 @@ const EditorPresentMode = memo(function EditorPresentMode({
     [posts, currentIndex]
   );
   
-  const normalizedPost = useNormalizedPost(currentPost);
+  // Create local state for the current post so carousel can update
+  const [localPost, setLocalPost] = useState(currentPost);
+  
+  // Update local post when current index changes
+  useEffect(() => {
+    setLocalPost(currentPost);
+  }, [currentPost]);
+  
+  const normalizedPost = useNormalizedPost(localPost);
 
   // Memoize platform display logic
   const platformInfo = useMemo(() => {
@@ -62,19 +70,15 @@ const EditorPresentMode = memo(function EditorPresentMode({
     setCurrentIndex((i) => posts.length > 0 ? (i + 1) % posts.length : 0);
   }, [posts.length]);
 
-  // Optimized keyboard navigation
+  // Only handle Escape key for closing
   useEffect(() => {
-    if (!posts.length) return;
-    
     const handleKeyDown = (e) => {
-      if (e.key === "ArrowLeft") goPrev();
-      if (e.key === "ArrowRight") goNext();
       if (e.key === "Escape" && onClose) onClose();
     };
     
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [posts.length, goPrev, goNext, onClose]);
+  }, [onClose]);
 
   if (!posts.length) {
     return (
@@ -93,9 +97,9 @@ const EditorPresentMode = memo(function EditorPresentMode({
 
 
   return (
-    <div className="h-screen flex flex-col bg-white shadow-lg mx-2 my-1 rounded-lg">
+    <div className="fixed inset-4 flex flex-col bg-white shadow-xl rounded-lg z-50 overflow-hidden">
       {/* Header section with progress, platform tags, and status */}
-      <div className="flex-shrink-0 px-6 py-2 border-b bg-gray-50 rounded-t-lg">
+      <div className="flex-shrink-0 px-6 py-2 border-b bg-gray-50">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-4">
             {/* Progress indicator */}
@@ -150,33 +154,40 @@ const EditorPresentMode = memo(function EditorPresentMode({
         </div>
       </div>
 
-      {/* Main preview with dynamic sizing */}
-      <div className="flex-1 min-h-0 overflow-auto" style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '20px' }}>
-        <RightPreview
-          post={normalizedPost}
-          setPost={() => {}} // Read-only in present mode
-          mode="present"
-          clamp={{ maxPx: 500, maxVmin: 65 }} // Constrain to fit with all content visible
-          showExport={false} // Hide export button in present mode
-        />
+      {/* Main preview with scrollable container */}
+      <div className="flex-1 overflow-y-auto overflow-x-hidden">
+        <div className="min-h-full flex items-start justify-center p-6">
+          <div className="w-full max-w-2xl">
+            <RightPreview
+              post={normalizedPost}
+              setPost={setLocalPost} // Allow carousel to update active index
+              mode="present"
+              clamp={null} // Let content size naturally
+              showExport={false} // Hide export button in present mode
+            />
+          </div>
+        </div>
       </div>
 
       {/* Footer with navigation controls */}
       {posts.length > 1 && (
-        <div className="flex-shrink-0 px-6 py-2 border-t bg-gray-50 rounded-b-lg">
+        <div className="flex-shrink-0 px-6 py-2 border-t bg-gray-50">
           <div className="flex items-center justify-center gap-2">
             <button
               className="btn-outline flex items-center"
               onClick={goPrev}
-              title="Previous post (←)"
+              title="Previous post in deck"
             >
               <ChevronLeft className="w-4 h-4 mr-1" />
-              Prev
+              Previous
             </button>
+            <span className="text-sm text-gray-500">
+              Post {currentIndex + 1} of {posts.length}
+            </span>
             <button
               className="btn flex items-center"
               onClick={goNext}
-              title="Next post (→)"
+              title="Next post in deck"
             >
               Next
               <ChevronRight className="w-4 h-4 ml-1" />
