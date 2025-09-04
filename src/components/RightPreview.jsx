@@ -5,6 +5,8 @@ import { useExportStability } from "../hooks/useExportStability";
 import { canPlayVideo, getVideoThumbnail } from "../data/videoUtils";
 import { useView } from "../contexts/ViewContext";
 import InstagramPost from "./InstagramPost";
+import InstagramReel from "./InstagramReel";
+import FacebookReel from "./FacebookReel";
 import MobileFrame from "./MobileFrame";
 import ViewToggle from "./ViewToggle";
 
@@ -29,9 +31,11 @@ const RightPreview = forwardRef(function RightPreview(
   const currentIndex = normalizedPost.activeIndex || 0;
 
   // Determine aspect ratio class based on platform and settings
-  const aspectRatio = normalizedPost.platform === "instagram" 
-    ? (normalizedPost.igAdFormat ? normalizedPost.igAdFormat.split('-')[1] : "1:1")
-    : (normalizedPost.fbAspectRatio || "1:1");
+  const aspectRatio = normalizedPost.isReel || normalizedPost.type === "reel" 
+    ? "9:16"  // Reels are always vertical
+    : normalizedPost.platform === "instagram" 
+      ? (normalizedPost.igAdFormat ? normalizedPost.igAdFormat.split('-')[1] : "1:1")
+      : (normalizedPost.fbAspectRatio || "1:1");
 
   const getAspectClass = useMemo(() => (ratio) => {
     switch (ratio) {
@@ -161,7 +165,25 @@ const RightPreview = forwardRef(function RightPreview(
         className="mx-auto flex-shrink-0" 
         style={isMobile ? { width: '100%', maxWidth: 'none' } : wrapperStyle}
       >
-            {normalizedPost.platform === "instagram" ? (
+            {normalizedPost.isReel || normalizedPost.type === "reel" ? (
+              normalizedPost.platform === "instagram" ? (
+                <InstagramReel
+                  post={normalizedPost}
+                  previewRef={previewRef}
+                  videoRef={videoRef}
+                  aspectClass={normalizedAspectClass}
+                  mode={mode}
+                />
+              ) : (
+                <FacebookReel
+                  post={normalizedPost}
+                  previewRef={previewRef}
+                  videoRef={videoRef}
+                  aspectClass={normalizedAspectClass}
+                  mode={mode}
+                />
+              )
+            ) : normalizedPost.platform === "instagram" ? (
               <InstagramPost 
                 post={normalizedPost}
                 previewRef={previewRef}
@@ -436,7 +458,12 @@ const RightPreview = forwardRef(function RightPreview(
         <div className="w-full flex items-start justify-center">
           {isMobile ? (
             <MobileFrame>
-              <div className="overflow-y-auto h-full">
+              <div className={cx(
+                "h-full",
+                normalizedPost.isReel || normalizedPost.type === "reel"
+                  ? "overflow-hidden" // Reels should fill the screen
+                  : "overflow-y-auto"  // Regular posts can scroll
+              )}>
                 <PostContent />
               </div>
             </MobileFrame>

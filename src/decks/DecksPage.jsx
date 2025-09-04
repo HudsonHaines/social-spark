@@ -657,16 +657,21 @@ export default function DecksPage({
                 {items.map((it) => {
                   const pj = ensurePostShape(it.post_json || {});
                   console.log('🎨 Rendering item:', it.id, 'version:', pj.version, 'updatedAt:', pj.updatedAt);
-                  const kind =
-                    pj.type === "video"
+                  const kind = 
+                    pj.type === "reel" || pj.isReel
+                      ? "reel"
+                      : pj.type === "video"
                       ? "video"
                       : (pj.media?.length || 0) > 1
                       ? "carousel"
                       : "single";
                   const Icon =
-                    kind === "video" ? Film : kind === "carousel" ? Images : ImageIcon;
+                    kind === "reel" ? Film
+                    : kind === "video" ? Film 
+                    : kind === "carousel" ? Images 
+                    : ImageIcon;
 
-                  const thumb = pj.type === "video" && pj.videoSrc
+                  const thumb = (pj.type === "video" || pj.type === "reel" || pj.isReel) && pj.videoSrc
                     ? getVideoThumbnail(pj) || pj.videoSrc
                     : pj.media?.[0] || "";
 
@@ -675,7 +680,7 @@ export default function DecksPage({
                     " · " +
                     (pj.platform || "facebook") +
                     " · " +
-                    (pj.type || "single");
+                    (pj.isReel || pj.type === "reel" ? "reel" : pj.type || "single");
 
                   return (
                     <li
@@ -700,7 +705,7 @@ export default function DecksPage({
                         onClick={() => openPreview(pj)}
                       >
                         {thumb ? (
-                          pj.type === "video" ? (
+                          (pj.type === "video" || pj.type === "reel" || pj.isReel) ? (
                             canPlayVideo(pj.videoSrc) ? (
                               <div className="relative w-full h-full">
                                 <img

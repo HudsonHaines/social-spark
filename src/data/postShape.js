@@ -3,7 +3,7 @@ import { useMemo } from 'react';
 // Constants
 export const CTA_OPTIONS = ["Learn More","Shop Now","Sign Up","Download","Book Now","Contact Us"];
 export const VALID_PLATFORMS = ["facebook", "instagram"];
-export const VALID_TYPES = ["single", "carousel", "video"];
+export const VALID_TYPES = ["single", "carousel", "video", "reel"];
 export const VALID_ASPECT_RATIOS = ["1:1", "4:5", "9:16", "16:9", "1.91:1"];
 
 // Default objects (frozen for performance)
@@ -163,9 +163,30 @@ export function ensurePostShape(p) {
 
   // Infer type if not set
   if (!result.type) {
-    result.type = result.videoSrc ? "video" 
-      : result.media.length > 1 ? "carousel" 
-      : "single";
+    if (result.isReel && result.videoSrc) {
+      result.type = "reel";
+    } else if (result.videoSrc) {
+      result.type = "video";
+    } else if (result.media.length > 1) {
+      result.type = "carousel";
+    } else {
+      result.type = "single";
+    }
+  }
+  
+  // Auto-configure Reels properties
+  if (result.isReel || result.type === "reel") {
+    result.isReel = true;
+    result.type = "reel";
+    // Force 9:16 aspect ratio for Reels
+    result.fbAspectRatio = "9:16";
+    if (result.platform === "instagram") {
+      result.igAdFormat = "reels-9:16";
+      result.igAdType = "reels";
+    } else {
+      result.fbAdFormat = "reels-9:16";
+      result.fbAdType = "reels";
+    }
   }
 
   return result;

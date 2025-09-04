@@ -53,34 +53,102 @@ function CollapsibleSection({ title, children, defaultOpen = false }) {
 function FoundationBar({ post, update, brands, onSelectBrand, openBrandManager }) {
   const selectedBrand = brands.find(b => b.id === (post?.brandId ?? post?.brand?.id)) || null;
   
+  // Smart detection for Reels suggestion
+  const isVerticalVideo = post?.type === "video" && (
+    post?.fbAspectRatio === "9:16" || 
+    post?.igAdFormat?.includes("9:16") ||
+    post?.videoSrc
+  );
+  const suggestReels = isVerticalVideo && !post?.isReel;
+  
+  const handlePlatformChange = (platform, isReel = false) => {
+    const updates = { platform };
+    
+    if (isReel) {
+      // Auto-configure for Reels
+      updates.isReel = true;
+      updates.fbAspectRatio = "9:16";
+      updates.igAdFormat = "reels-9:16";
+      updates.fbAdType = "reels";
+      updates.igAdType = "reels";
+    }
+    
+    update(updates);
+  };
+  
   return (
     <div className="bg-white border-b border-gray-200 p-4 flex-shrink-0">
       {/* Platform Toggle */}
       <div className="flex items-center gap-3 mb-3">
-        <div className="flex bg-gray-100 rounded-lg p-1">
+        <div className="flex bg-gray-100 rounded-lg p-1 flex-wrap">
+          {/* Regular Posts */}
           <button
             className={cx(
               "px-3 py-1.5 rounded-md text-sm font-medium transition-all",
-              post.platform === "facebook" 
+              post.platform === "facebook" && !post.isReel
                 ? "bg-white shadow-sm text-blue-600" 
                 : "text-gray-600 hover:text-gray-900"
             )}
-            onClick={() => update({ platform: "facebook" })}
+            onClick={() => handlePlatformChange("facebook", false)}
           >
             f Facebook
           </button>
           <button
             className={cx(
               "px-3 py-1.5 rounded-md text-sm font-medium transition-all",
-              post.platform === "instagram" 
+              post.platform === "instagram" && !post.isReel
                 ? "bg-white shadow-sm text-pink-600" 
                 : "text-gray-600 hover:text-gray-900"
             )}
-            onClick={() => update({ platform: "instagram" })}
+            onClick={() => handlePlatformChange("instagram", false)}
           >
             📷 Instagram
           </button>
+          
+          {/* Reels Options - Show when relevant */}
+          {(isVerticalVideo || post.isReel) && (
+            <>
+              <button
+                className={cx(
+                  "px-3 py-1.5 rounded-md text-sm font-medium transition-all",
+                  post.platform === "facebook" && post.isReel
+                    ? "bg-white shadow-sm text-blue-600" 
+                    : "text-gray-600 hover:text-gray-900"
+                )}
+                onClick={() => handlePlatformChange("facebook", true)}
+              >
+                <Film size={12} className="inline mr-1" />
+                FB Reels
+              </button>
+              <button
+                className={cx(
+                  "px-3 py-1.5 rounded-md text-sm font-medium transition-all",
+                  post.platform === "instagram" && post.isReel
+                    ? "bg-white shadow-sm text-pink-600" 
+                    : "text-gray-600 hover:text-gray-900"
+                )}
+                onClick={() => handlePlatformChange("instagram", true)}
+              >
+                <Film size={12} className="inline mr-1" />
+                IG Reels
+              </button>
+            </>
+          )}
         </div>
+        
+        {/* Smart Reels Suggestion */}
+        {suggestReels && (
+          <div className="ml-2 flex items-center gap-2 text-xs text-amber-600 bg-amber-50 px-2 py-1 rounded-md">
+            <Film size={12} />
+            <span>9:16 video detected</span>
+            <button 
+              onClick={() => handlePlatformChange(post.platform, true)}
+              className="text-amber-700 hover:text-amber-800 font-medium"
+            >
+              Make Reel?
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Brand Selection */}
