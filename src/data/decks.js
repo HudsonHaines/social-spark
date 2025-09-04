@@ -108,12 +108,16 @@ export async function updateDeckItem(itemId, postJson) {
   if (!itemId) throw new Error('Item ID is required');
   if (!postJson || typeof postJson !== 'object') throw new Error('Invalid post data');
   
+  console.log('🔄 updateDeckItem called with:', { itemId, postJsonKeys: Object.keys(postJson) });
+  
   // Add version tracking
   const updatedPost = {
     ...postJson,
     version: (postJson.version || 1) + 1,
     updatedAt: new Date().toISOString()
   };
+  
+  console.log('📝 About to update item:', itemId, 'with version:', updatedPost.version);
   
   const { data, error } = await supabase
     .from("deck_items")

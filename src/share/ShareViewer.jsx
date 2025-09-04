@@ -11,6 +11,7 @@ export default function ShareViewer({ token }) {
   const [posts, setPosts] = useState([]);
   const [idx, setIdx] = useState(0);
   const [brandInfo, setBrandInfo] = useState(null);
+  const [organizationInfo, setOrganizationInfo] = useState(null);
 
   const [currentPost, setCurrentPost] = useState(() => ensurePostShape({}));
 
@@ -46,6 +47,51 @@ export default function ShareViewer({ token }) {
             username: firstPostWithBrand.brand.username,
             verified: firstPostWithBrand.brand.verified
           });
+        }
+
+        // Try to get organization info from the deck owner
+        if (data.deck?.user_id) {
+          try {
+            // Try multiple approaches to get organization info
+            
+            // Approach 1: Check if deck has organization_id directly
+            if (data.deck.organization_id) {
+              const { data: orgData, error: orgError } = await supabase
+                .from('organizations')
+                .select('id, name')
+                .eq('id', data.deck.organization_id)
+                .single();
+              
+              if (!orgError && orgData) {
+                setOrganizationInfo(orgData);
+              }
+            } else {
+              // Approach 2: Look up user's organization membership
+              const { data: orgData, error: orgError } = await supabase
+                .from('organization_memberships')
+                .select(`
+                  role,
+                  organizations(id, name)
+                `)
+                .eq('user_id', data.deck.user_id);
+
+              if (!orgError && orgData && orgData.length > 0) {
+                // Prefer owner role, but take any membership
+                const ownerMembership = orgData.find(m => m.role === 'owner');
+                const membership = ownerMembership || orgData[0];
+                
+                if (membership?.organizations) {
+                  setOrganizationInfo({
+                    id: membership.organizations.id,
+                    name: membership.organizations.name
+                  });
+                }
+              }
+            }
+          } catch (orgErr) {
+            // Not a critical error, continue without org info
+            console.error('Could not fetch organization info:', orgErr);
+          }
         }
         
         // Increment view count after successful load
@@ -244,7 +290,12 @@ export default function ShareViewer({ token }) {
 
       {/* Minimal footer */}
       <div className="border-t border-gray-100 mt-16">
-        <div className="max-w-4xl mx-auto px-6 py-6 text-center">
+        <div className="max-w-4xl mx-auto px-6 py-6 text-center space-y-2">
+          {brandInfo?.name && (
+            <p className="text-xs text-gray-500">
+              Prepared for <span className="font-medium">{brandInfo.name}</span> by <span className="font-medium">{organizationInfo?.name || 'Social Spark'}</span>
+            </p>
+          )}
           <p className="text-xs text-gray-400">
             Created with Social Spark
           </p>

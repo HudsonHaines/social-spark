@@ -10,7 +10,8 @@ import {
   ChevronLeft,
   ChevronRight,
   Save,
-  X
+  X,
+  FileText
 } from "lucide-react";
 import { getVideoThumbnail, canPlayVideo } from "../data/videoUtils";
 
@@ -27,6 +28,11 @@ const DeckStrip = memo(function DeckStrip({
   onSaveDeck,
   onReorderDeck,
   onPreviewDeck,
+  onStartNewDeck, // New prop for starting fresh
+  lastSaved,
+  isEditingExistingDeck,
+  currentDeckTitle,
+  hasUnsavedChanges = false, // New prop to check for unsaved changes
 }) {
   const scrollRef = useRef(null);
   const [showSaveModal, setShowSaveModal] = useState(false);
@@ -35,6 +41,7 @@ const DeckStrip = memo(function DeckStrip({
   const [showSuccessMessage, setShowSuccessMessage] = useState(false);
   const [draggedIndex, setDraggedIndex] = useState(null);
   const [dragOverIndex, setDragOverIndex] = useState(null);
+  const [showNewDeckModal, setShowNewDeckModal] = useState(false);
 
   // Auto-scroll to end when new items are added
   useEffect(() => {
@@ -97,12 +104,42 @@ const DeckStrip = memo(function DeckStrip({
     }
   };
 
-  const handleSaveClick = () => {
+  const handleStartNewDeck = () => {
+    if (hasUnsavedChanges) {
+      setShowNewDeckModal(true);
+    } else {
+      onStartNewDeck?.();
+    }
+  };
+
+  const confirmStartNewDeck = () => {
+    setShowNewDeckModal(false);
+    onStartNewDeck?.();
+  };
+
+  const handleSaveClick = async () => {
     if (deck.length === 0) {
       alert("Add some posts to your deck before saving.");
       return;
     }
-    setShowSaveModal(true);
+    
+    // If editing existing deck, save directly without modal
+    if (isEditingExistingDeck && currentDeckTitle) {
+      setIsSaving(true);
+      try {
+        await onSaveDeck(currentDeckTitle);
+        setShowSuccessMessage(true);
+        setTimeout(() => setShowSuccessMessage(false), 3000);
+      } catch (error) {
+        console.error("Failed to save deck:", error);
+        alert("Failed to save deck. Please try again.");
+      } finally {
+        setIsSaving(false);
+      }
+    } else {
+      // For new decks, show the modal
+      setShowSaveModal(true);
+    }
   };
 
   // Drag and drop handlers
@@ -192,13 +229,29 @@ const DeckStrip = memo(function DeckStrip({
       <div className="flex items-center px-4 py-2 border-b border-gray-100">
         <div className="flex items-center gap-3 flex-1">
           <span className="text-sm font-medium text-gray-700">
-            Deck Preview
+            {isEditingExistingDeck ? 'Editing Deck' : 'Deck Preview'}
           </span>
           <span className="text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full">
             {deck.length} post{deck.length === 1 ? '' : 's'}
           </span>
+          {lastSaved && (
+            <span className="text-xs text-green-600 bg-green-50 px-2 py-0.5 rounded-full">
+              Saved {new Date(lastSaved).toLocaleTimeString()}
+            </span>
+          )}
         </div>
         <div className="flex items-center gap-2">
+          {/* New Deck Button - only show when editing existing deck */}
+          {isEditingExistingDeck && onStartNewDeck && (
+            <button
+              onClick={handleStartNewDeck}
+              className="flex items-center gap-1 px-3 py-1 bg-slate-500 text-white rounded-lg text-xs font-medium hover:bg-slate-600 transition-colors"
+              title="Start creating a new deck"
+            >
+              <FileText className="w-3 h-3" />
+              New Deck
+            </button>
+          )}
           {onPreviewDeck && (
             <button
               onClick={onPreviewDeck}
@@ -210,10 +263,11 @@ const DeckStrip = memo(function DeckStrip({
           )}
           <button
             onClick={handleSaveClick}
-            className="flex items-center gap-1 px-3 py-1 bg-green-500 text-white rounded-lg text-xs font-medium hover:bg-green-600 transition-colors"
+            disabled={isSaving}
+            className="flex items-center gap-1 px-3 py-1 bg-green-500 text-white rounded-lg text-xs font-medium hover:bg-green-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <Save className="w-3 h-3" />
-            Save Deck
+            {isSaving ? 'Saving...' : (isEditingExistingDeck ? 'Update Deck' : 'Save Deck')}
           </button>
           <button
             onClick={onAddToDeck}
@@ -337,6 +391,41 @@ const DeckStrip = memo(function DeckStrip({
           </div>
         </div>
       )}
+
+      {/* New Deck Modal */}
+      {showNewDeckModal && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center">
+          <div className="bg-white rounded-lg p-6 w-full max-w-md mx-4 shadow-xl">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold text-gray-900">Start New Deck?</h3>
+            </div>
+            
+            <div className="mb-6">
+              <p className="text-gray-600">
+                You have unsaved changes to the current post. Starting a new deck will clear your current work.
+              </p>
+              <p className="text-sm text-orange-600 mt-2 font-medium">
+                💡 Save your changes first if you want to keep them!
+              </p>
+            </div>
+
+            <div className="flex gap-3 justify-end">
+              <button
+                onClick={() => setShowNewDeckModal(false)}
+                className="flex-1 px-4 py-2 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmStartNewDeck}
+                className="flex-1 px-4 py-2 bg-slate-500 text-white rounded-lg text-sm font-medium hover:bg-slate-600 transition-colors"
+              >
+                Start New Deck
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 });
@@ -431,6 +520,24 @@ const DeckItem = memo(function DeckItem({
             {post?.platform === "facebook" ? "f" : "📷"}
           </div>
         </div>
+
+        {/* Version Badge */}
+        {post?.version && post.version > 1 && (
+          <div className="absolute bottom-1 right-1">
+            <div className="bg-green-500 text-white text-[10px] font-medium rounded px-1.5 py-0.5 shadow-sm">
+              v{post.version}
+            </div>
+          </div>
+        )}
+
+        {/* Updated Badge */}
+        {post?.updatedAt && (
+          <div className="absolute bottom-1 left-1">
+            <div className="bg-orange-500 text-white text-[10px] font-medium rounded px-1.5 py-0.5 shadow-sm">
+              ↻
+            </div>
+          </div>
+        )}
 
         {/* Hover Actions */}
         <div className="absolute inset-0 bg-black/60 opacity-0 group-hover/item:opacity-100 transition-opacity flex items-center justify-center">

@@ -152,8 +152,8 @@ const RightPreview = forwardRef(function RightPreview(
 
   return (
     <div className={cx(normalizedPost.platform === "instagram" ? "ig-ui" : "fb-ui", "h-full flex flex-col")}>
-      <div className="flex-1 flex items-start justify-center overflow-hidden p-4">
-        <div className="w-full h-full flex items-start justify-center">
+      <div className="flex-1 flex items-start justify-center overflow-y-auto p-4">
+        <div className="w-full flex items-start justify-center">
           <div 
             className="mx-auto flex-shrink-0" 
             style={wrapperStyle}

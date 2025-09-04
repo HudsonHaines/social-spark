@@ -17,6 +17,7 @@ import {
   Search
 } from 'lucide-react';
 import { useAuth } from '../auth/AuthProvider';
+import { useOrganization } from '../organizations/OrganizationProvider';
 import { 
   getUserDeckShares, 
   revokeDeckShare, 
@@ -27,6 +28,7 @@ import {
 
 const ShareLinksPage = () => {
   const { user } = useAuth();
+  const { currentOrganization } = useOrganization();
   const [shareLinks, setShareLinks] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -578,6 +580,7 @@ const ShareLinksPage = () => {
           </div>
         </div>
       )}
+
     </div>
   );
 };

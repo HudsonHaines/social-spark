@@ -11,7 +11,10 @@ import AppShell from "./components/AppShell";
 import LeftPanel from "./components/LeftPanel";
 import RightPreview from "./components/RightPreview";
 import MenuDrawer from "./components/MenuDrawer";
+import DeckStrip from "./components/DeckStrip";
 import DeckPickerV3 from "./decks/DeckPickerV3";
+import { useConfirmModal } from "./components/ConfirmModal";
+import { useToast } from "./components/Toast";
 import DecksPage from "./decks/DecksPage";
 import BrandsPage from "./brands/BrandsPage";
 import ShareLinksPage from "./share/ShareLinksPage";
@@ -25,6 +28,8 @@ import {
   addItemToDeck,
   listDeckItems,
   updateDeckItem,
+  deleteDeckItems,
+  renameDeck,
 } from "./data/decks";
 import { supabase } from "./lib/supabaseClient";
 import { uploadPostMedia, checkStorageSetup } from "./data/mediaStorage";
@@ -80,6 +85,8 @@ export default function App() {
   const [post, setPost] = useState(() => ensurePostShape(emptyPost));
   const [localDeck, setLocalDeck] = useState([]);
   const [showDeckStrip, setShowDeckStrip] = useState(false);
+  const [lastSaved, setLastSaved] = useState(null);
+  const [deckRefreshTrigger, setDeckRefreshTrigger] = useState(0);
   
   // App navigation state
   const [appState, setAppState] = useState({
@@ -101,8 +108,18 @@ export default function App() {
   const [editingFromDeck, setEditingFromDeck] = useState({
     deckId: null,
     itemId: null,
-    version: 1
+    version: 1,
+    deckTitle: null
   });
+
+  // Track unsaved changes
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+
+  // Custom modal hook
+  const { ConfirmModal, alert, confirm } = useConfirmModal();
+  
+  // Toast notifications
+  const { success: showSuccessToast, error: showErrorToast, ToastContainer } = useToast();
 
   // refs
   const previewRef = useRef(null);
@@ -140,7 +157,18 @@ export default function App() {
         typeof patchOrFn === "function" ? patchOrFn(ensurePostShape(p)) : { ...p, ...patchOrFn };
       return ensurePostShape(next);
     });
-  }, []);
+    // Mark as having unsaved changes when editing from a deck
+    if (editingFromDeck.deckId) {
+      setHasUnsavedChanges(true);
+    }
+  }, [editingFromDeck.deckId]);
+
+  // Reset unsaved changes when we clear editing state or save
+  useEffect(() => {
+    if (!editingFromDeck.deckId) {
+      setHasUnsavedChanges(false);
+    }
+  }, [editingFromDeck.deckId]);
 
   // Consolidated auth check utility
   const ensureAuthenticated = useCallback(async () => {
@@ -344,8 +372,211 @@ export default function App() {
       const authenticatedUserId = await ensureAuthenticated();
       if (!authenticatedUserId) return;
       
+      // If we're editing a deck from the deck strip, just update the local deck and save it
+      if (editingFromDeck.deckId && localDeck.length > 0) {
+        console.log("📝 Updating current post in local deck and saving entire deck");
+        
+        // Find and update the current post in the local deck
+        console.log('🔍 Looking for post to update in local deck. Current post:', post);
+        console.log('🔍 Local deck items:', localDeck.map(item => ({ id: item.id, post: item.post })));
+        
+        let foundMatch = false;
+        const updatedLocalDeck = localDeck.map((item, index) => {
+          // Try multiple matching strategies
+          const isExactMatch = item.post === post;
+          const isJsonMatch = JSON.stringify(item.post) === JSON.stringify(post);
+          const isIdMatch = item.deckItemId === editingFromDeck.itemId;
+          const isCaptionMatch = item.post.caption === post.caption; // Use caption instead of text
+          
+          console.log(`🔍 Item ${index}:`, {
+            itemId: item.id,
+            deckItemId: item.deckItemId,
+            editingItemId: editingFromDeck.itemId,
+            itemCaption: item.post.caption?.substring(0, 50) + '...',
+            currentCaption: post.caption?.substring(0, 50) + '...',
+            isExactMatch,
+            isJsonMatch,
+            isIdMatch,
+            isCaptionMatch
+          });
+          
+          // Update if we find a match by ID, but only if the content also matches
+          // This prevents updating the wrong item if IDs are stale
+          if (isIdMatch && (isJsonMatch || isCaptionMatch)) {
+            console.log('✅ Found match by ID + content! Updating item:', item.id);
+            foundMatch = true;
+            return {
+              ...item,
+              post: {
+                ...ensurePostShape(post),
+                version: (item.post.version || 1) + 1,
+                updatedAt: new Date().toISOString()
+              }
+            };
+          }
+          
+          // Fallback: if no ID match but content matches, update this item
+          if (isJsonMatch || isCaptionMatch) {
+            console.log('✅ Found match by content! Updating item:', item.id);
+            foundMatch = true;
+            return {
+              ...item,
+              post: {
+                ...ensurePostShape(post),
+                version: (item.post.version || 1) + 1,
+                updatedAt: new Date().toISOString()
+              }
+            };
+          }
+          return item;
+        });
+        
+        if (!foundMatch) {
+          console.warn('⚠️ No exact match found. Looking for best match by media similarity...');
+          
+          // Try to find the best match by comparing media (images/videos)
+          let bestMatchIndex = 0;
+          let bestMatchScore = 0;
+          
+          localDeck.forEach((item, index) => {
+            let score = 0;
+            
+            // Compare media arrays
+            if (item.post.media && post.media && item.post.media.length === post.media.length) {
+              score += 2; // Same number of media items
+            }
+            
+            // Compare video source
+            if (item.post.videoSrc && post.videoSrc && item.post.videoSrc === post.videoSrc) {
+              score += 3; // Same video source
+            }
+            
+            // Compare platform and type
+            if (item.post.platform === post.platform) score += 1;
+            if (item.post.type === post.type) score += 1;
+            
+            console.log(`🔍 Item ${index} similarity score:`, score);
+            
+            if (score > bestMatchScore) {
+              bestMatchScore = score;
+              bestMatchIndex = index;
+            }
+          });
+          
+          console.log('✅ Using best match (index', bestMatchIndex, ') with score:', bestMatchScore);
+          updatedLocalDeck[bestMatchIndex] = {
+            ...updatedLocalDeck[bestMatchIndex],
+            post: {
+              ...ensurePostShape(post),
+              version: (updatedLocalDeck[bestMatchIndex].post.version || 1) + 1,
+              updatedAt: new Date().toISOString()
+            }
+          };
+        }
+        
+        console.log('🔄 Updated local deck:', updatedLocalDeck.map(item => ({ id: item.id, caption: item.post.caption })));
+        
+        setLocalDeck(updatedLocalDeck);
+        
+        // Save the entire updated deck
+        try {
+          const deckName = editingFromDeck.deckTitle || 'Updated Deck';
+          console.log("💾 Saving updated deck:", deckName);
+          
+          // Use the existing deck save logic by calling the DeckStrip's onSaveDeck
+          // First update the local deck state
+          setLocalDeck(updatedLocalDeck);
+          
+          // Then save it using the same logic as the deck strip
+          await new Promise((resolve, reject) => {
+            // We'll trigger the save through the deck strip save logic
+            // For now, let's use a simplified approach
+            setTimeout(async () => {
+              try {
+                // Save the deck using the same logic as onSaveDeck
+                const isEditingExistingDeck = !!editingFromDeck.deckId;
+                const currentDeckTitle = editingFromDeck.deckTitle;
+                
+                if (isEditingExistingDeck && currentDeckTitle) {
+                  // Updating existing deck - delete old items and save new ones
+                  console.log('Updating existing deck:', editingFromDeck.deckId);
+                  
+                  // Delete existing items
+                  const existingItems = await listDeckItems(editingFromDeck.deckId);
+                  if (existingItems.length > 0) {
+                    const itemIds = existingItems.map(item => item.id);
+                    await deleteDeckItems(itemIds);
+                  }
+                  
+                  // Save new items with media upload
+                  for (let i = 0; i < updatedLocalDeck.length; i++) {
+                    const item = updatedLocalDeck[i];
+                    console.log(`Processing item ${i + 1}/${updatedLocalDeck.length}...`);
+                    
+                    // Upload media files if needed
+                    console.log('Uploading media for item', i + 1, '...');
+                    let postWithUploadedMedia = await uploadPostMedia(item.post, authenticatedUserId);
+                    
+                    // Process video if needed
+                    if (postWithUploadedMedia.videoSrc && postWithUploadedMedia.videoSrc.startsWith('data:video/')) {
+                      console.log('🎬 Processing video for deck item...');
+                      try {
+                        const videoData = await processVideoForDeck(postWithUploadedMedia.videoSrc);
+                        postWithUploadedMedia = {
+                          ...postWithUploadedMedia,
+                          videoThumbnail: videoData.thumbnail,
+                          videoMetadata: videoData.metadata,
+                          videoSrc: videoData.videoSrc // Use processed video src
+                        };
+                        console.log('🎥 Video processed successfully');
+                      } catch (videoError) {
+                        console.error('Video processing failed:', videoError);
+                        // Continue anyway - video will remain as data URL
+                      }
+                    }
+                    
+                    // Add to deck
+                    await addItemToDeck(editingFromDeck.deckId, postWithUploadedMedia, i);
+                    console.log(`✅ Item ${i + 1} saved successfully`);
+                  }
+                  
+                  console.log('🎉 All items saved successfully!');
+                  
+                  // Verify the save worked
+                  const verifyItems = await listDeckItems(editingFromDeck.deckId);
+                  console.log('✅ Verification: Deck now has', verifyItems.length, 'items in database');
+                  
+                  resolve();
+                } else {
+                  reject(new Error('Not editing an existing deck'));
+                }
+              } catch (error) {
+                reject(error);
+              }
+            }, 100); // Small delay to ensure state is updated
+          });
+          
+          showSuccessToast(`Updated "${deckName}" successfully!`);
+          setHasUnsavedChanges(false);
+          setDeckRefreshTrigger(prev => prev + 1);
+        } catch (e) {
+          console.error("Error saving updated deck:", e);
+          await alert({
+            title: "Update Failed",
+            message: `Could not save updated deck: ${e.message}`,
+            type: "error"
+          });
+        }
+        return;
+      }
+      
+      // Fallback to individual item update (shouldn't happen in normal flow)
       if (!editingFromDeck.itemId) {
-        alert("No deck item to update");
+        await alert({
+          title: "Nothing to Update",
+          message: "No deck item is currently selected for updating.",
+          type: "warning"
+        });
         return;
       }
 
@@ -354,6 +585,7 @@ export default function App() {
         
         // Upload media files before saving
         console.log("Uploading media files for update...");
+        console.log("📝 Updating item:", editingFromDeck.itemId, "with post:", postJson);
         const postWithUploadedMedia = await uploadPostMedia(postJson, authenticatedUserId);
         
         // Update the deck item with version tracking
@@ -365,14 +597,62 @@ export default function App() {
           version: (postWithUploadedMedia.version || 1) + 1
         }));
         
-        alert(`Updated deck item (Version ${(postWithUploadedMedia.version || 1) + 1})`);
+        showSuccessToast(`Post updated to v${(postWithUploadedMedia.version || 1) + 1}!`);
+        setHasUnsavedChanges(false);
+        setDeckRefreshTrigger(prev => prev + 1);
       } catch (e) {
         console.error(e);
-        alert("Could not update deck item: " + e.message);
+        await alert({
+          title: "Update Failed", 
+          message: `Could not update deck item: ${e.message}`,
+          type: "error"
+        });
       }
     },
-    [post, editingFromDeck.itemId, ensureAuthenticated]
+    [post, editingFromDeck.itemId, editingFromDeck.deckId, editingFromDeck.deckTitle, localDeck, ensureAuthenticated, setDeckRefreshTrigger]
   );
+
+  // Keyboard shortcuts (after updateInDeck is defined)
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      // Only trigger shortcuts when focused on the body or editor elements
+      const isEditableElement = e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.contentEditable === 'true';
+      
+      // Cmd/Ctrl + S to save
+      if ((e.metaKey || e.ctrlKey) && e.key === 's') {
+        e.preventDefault();
+        if (editingFromDeck?.itemId && hasUnsavedChanges) {
+          updateInDeck();
+        }
+        return;
+      }
+      
+      // Don't trigger navigation shortcuts when typing in input fields
+      if (isEditableElement) return;
+      
+      // Arrow keys for deck navigation (only when editing from deck)
+      if (editingFromDeck?.deckId && localDeck.length > 0) {
+        const currentIndex = localDeck.findIndex(item => 
+          item.post.id === post.id || JSON.stringify(item.post) === JSON.stringify(post)
+        );
+        
+        if (e.key === 'ArrowLeft' && currentIndex > 0) {
+          e.preventDefault();
+          const prevItem = localDeck[currentIndex - 1];
+          setPost(prevItem.post);
+          showSuccessToast(`← Previous post (${currentIndex}/${localDeck.length})`);
+        } else if (e.key === 'ArrowRight' && currentIndex < localDeck.length - 1) {
+          e.preventDefault();
+          const nextItem = localDeck[currentIndex + 1];
+          setPost(nextItem.post);
+          showSuccessToast(`Next post → (${currentIndex + 2}/${localDeck.length})`);
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [editingFromDeck, hasUnsavedChanges, updateInDeck, localDeck, post, setPost, showSuccessToast]);
 
   const saveToDeck = useCallback(
     async ({ deckId } = {}) => {
@@ -461,7 +741,16 @@ export default function App() {
     <Fragment>
       <AppShell
         user={authenticatedUser}
-        showDeckStrip={appState.page === "editor" && (showDeckStrip || localDeck.length > 0)}
+        showDeckStrip={(() => {
+          const shouldShow = appState.page === "editor" && (showDeckStrip || localDeck.length > 0);
+          console.log('🎪 DeckStrip visibility:', { 
+            page: appState.page, 
+            showDeckStrip, 
+            localDeckLength: localDeck.length, 
+            shouldShow 
+          });
+          return shouldShow;
+        })()}
         topBarProps={{
           user: authenticatedUser,
           onOpenMenu: () => setUiState(prev => ({ ...prev, menuOpen: true })),
@@ -476,11 +765,31 @@ export default function App() {
           onDuplicateToDeck: duplicateToDeck,
           onReorderDeck: reorderDeck,
           onPreviewDeck: openLocalDeckPreview,
+          onStartNewDeck: () => {
+            // Clear everything and start fresh
+            setLocalDeck([]);
+            setPost(ensurePostShape(emptyPost));
+            setEditingFromDeck({ deckId: null, itemId: null, version: 1, deckTitle: null });
+            setHasUnsavedChanges(false);
+            setShowDeckStrip(false);
+            showSuccessToast("Started new deck! 🎉");
+          },
+          lastSaved: lastSaved,
+          isEditingExistingDeck: !!editingFromDeck.deckId,
+          currentDeckTitle: editingFromDeck.deckTitle,
+          hasUnsavedChanges: hasUnsavedChanges,
           onSaveDeck: async (deckName) => {
             const authenticatedUserId = await ensureAuthenticated();
             if (!authenticatedUserId) return;
             
-            console.log('Starting deck save:', { deckName, userId: authenticatedUserId, itemCount: localDeck.length });
+            console.log('Starting deck save:', { 
+              deckName, 
+              userId: authenticatedUserId, 
+              itemCount: localDeck.length,
+              isEditing: !!editingFromDeck.deckId,
+              editingDeckId: editingFromDeck.deckId,
+              editingDeckTitle: editingFromDeck.deckTitle
+            });
             
             try {
               // Validate deck name
@@ -506,11 +815,31 @@ export default function App() {
                 console.warn('Storage check failed, proceeding anyway:', storageCheckError);
               }
 
-              console.log('Creating new deck...');
-              const newDeck = await createDeck(authenticatedUserId, deckName.trim());
-              console.log('Deck created successfully:', newDeck);
+              let targetDeckId;
               
-              // Add all local deck items to the new deck with media upload
+              // Check if we're editing an existing deck
+              if (editingFromDeck.deckId) {
+                console.log('Updating existing deck:', editingFromDeck.deckId);
+                
+                // Update the deck title
+                await renameDeck(editingFromDeck.deckId, deckName.trim());
+                
+                // Clear existing deck items - first get all item IDs
+                const existingItems = await listDeckItems(editingFromDeck.deckId);
+                if (existingItems.length > 0) {
+                  const itemIds = existingItems.map(item => item.id);
+                  await deleteDeckItems(itemIds);
+                }
+                
+                targetDeckId = editingFromDeck.deckId;
+              } else {
+                console.log('Creating new deck...');
+                const newDeck = await createDeck(authenticatedUserId, deckName.trim());
+                console.log('Deck created successfully:', newDeck);
+                targetDeckId = newDeck.id;
+              }
+              
+              // Add all local deck items to the deck with media upload
               for (let i = 0; i < localDeck.length; i++) {
                 const item = localDeck[i];
                 console.log(`Processing item ${i + 1}/${localDeck.length}...`);
@@ -523,42 +852,8 @@ export default function App() {
                   console.log(`Uploading media for item ${i + 1}...`);
                   const postWithUploadedMedia = await uploadPostMedia(cleanPost, authenticatedUserId);
                   
-                  // Now the post has URLs instead of base64 data
-                  const sanitizedPost = {
-                    ...postWithUploadedMedia,
-                    mediaMeta: postWithUploadedMedia.mediaMeta?.map(meta => ({
-                      headline: meta?.headline || '',
-                      subhead: meta?.subhead || ''
-                    })) || [],
-                    brand: postWithUploadedMedia.brand ? {
-                      id: postWithUploadedMedia.brand.id || null,
-                      name: postWithUploadedMedia.brand.name || '',
-                      username: postWithUploadedMedia.brand.username || '',
-                      profileSrc: postWithUploadedMedia.brand.profileSrc || '',
-                      verified: !!postWithUploadedMedia.brand.verified
-                    } : null,
-                    link: postWithUploadedMedia.link ? {
-                      headline: postWithUploadedMedia.link.headline || '',
-                      subhead: postWithUploadedMedia.link.subhead || '',
-                      url: postWithUploadedMedia.link.url || '',
-                      cta: postWithUploadedMedia.link.cta || 'Learn More'
-                    } : null
-                  };
-                  
-                  // Check final size (should be much smaller now with URLs instead of base64)
-                  const jsonString = JSON.stringify(sanitizedPost);
-                  console.log(`Item ${i + 1} final size: ${(jsonString.length / 1024).toFixed(1)}KB`);
-                  
-                  // Log the media URLs for debugging
-                  if (sanitizedPost.media?.length) {
-                    console.log(`Item ${i + 1} media URLs:`, sanitizedPost.media);
-                  }
-                  if (sanitizedPost.videoSrc) {
-                    console.log(`Item ${i + 1} video URL:`, sanitizedPost.videoSrc);
-                  }
-                  
                   // Save to deck with the uploaded media URLs
-                  await addItemToDeck(newDeck.id, sanitizedPost, i);
+                  await addItemToDeck(targetDeckId, postWithUploadedMedia, i);
                   console.log(`✅ Item ${i + 1} saved successfully`);
                   
                 } catch (uploadError) {
@@ -646,17 +941,43 @@ export default function App() {
                 }
               }
               
-              console.log('All items added successfully');
+              console.log('🎉 All items saved successfully!');
               
-              // Clear local deck after successful save
-              setLocalDeck([]);
-              console.log('Deck saved successfully!');
+              // Verify save by checking database
+              if (editingFromDeck.deckId) {
+                try {
+                  const verifyItems = await listDeckItems(editingFromDeck.deckId);
+                  console.log('✅ Verification: Deck now has', verifyItems.length, 'items in database');
+                } catch (verifyError) {
+                  console.error('❌ Could not verify save:', verifyError);
+                }
+              }
+              
+              // Update last saved timestamp
+              setLastSaved(new Date());
+              
+              // Trigger deck refresh for DecksPage
+              setDeckRefreshTrigger(prev => {
+                const newValue = prev + 1;
+                console.log('🔄 Triggering deck refresh:', newValue);
+                return newValue;
+              });
+              
+              // If we were editing an existing deck, keep the deck strip visible
+              // If it was a new deck, optionally clear it
+              if (!editingFromDeck.deckId) {
+                setLocalDeck([]);
+                setShowDeckStrip(false);
+              }
             } catch (error) {
-              console.error("Failed to save deck:", {
+              console.error("❌ Failed to save deck:", {
                 error: error.message,
                 stack: error.stack,
                 deckName,
                 itemCount: localDeck.length,
+                isEditing: !!editingFromDeck.deckId,
+                editingDeckId: editingFromDeck.deckId,
+                editingDeckTitle: editingFromDeck.deckTitle,
                 items: localDeck.map((item, i) => ({
                   index: i,
                   id: item.id,
@@ -675,15 +996,49 @@ export default function App() {
               currentPost={null}
               onBack={() => navigateToPage("editor")}
               onPresent={openInternalDeckChecker}
-              onLoadToEditor={(post, deckId, itemId) => {
-                setPost(post);
-                // Track that we're editing from a deck
-                setEditingFromDeck({
-                  deckId: deckId,
-                  itemId: itemId,
-                  version: (post.version || 1)
-                });
-                navigateToPage("editor");
+              refreshTrigger={deckRefreshTrigger}
+              onLoadToEditor={async (post, deckId, itemId, deckTitle) => {
+                try {
+                  // Load the entire deck into the strip
+                  const deckItems = await listDeckItems(deckId);
+                  
+                  // Convert deck items to local deck format
+                  const localDeckItems = deckItems.map(item => ({
+                    id: item.id,
+                    post: item.post_json,
+                    deckItemId: item.id // Keep reference to original deck item
+                  }));
+                  
+                  // Set the deck in local state and show the strip
+                  setLocalDeck(localDeckItems);
+                  setShowDeckStrip(true);
+                  
+                  // Set the clicked post as current
+                  setPost(post);
+                  
+                  // Track that we're editing from a deck
+                  setEditingFromDeck({
+                    deckId: deckId,
+                    itemId: itemId,
+                    version: (post.version || 1),
+                    deckTitle: deckTitle || 'Untitled Deck'
+                  });
+                  
+                  navigateToPage("editor");
+                } catch (error) {
+                  console.error('Failed to load deck for editing:', error);
+                  alert('Failed to load deck. Loading just this post instead.');
+                  
+                  // Fallback to original behavior
+                  setPost(post);
+                  setEditingFromDeck({
+                    deckId: deckId,
+                    itemId: itemId,
+                    version: (post.version || 1),
+                    deckTitle: deckTitle || 'Untitled Deck'
+                  });
+                  navigateToPage("editor");
+                }
               }}
             />
           ) : appState.page === "brands" ? (
@@ -709,7 +1064,8 @@ export default function App() {
               saveToDeck={saveToDeck}
               updateInDeck={updateInDeck}
               editingFromDeck={editingFromDeck}
-              clearEditingFromDeck={() => setEditingFromDeck({ deckId: null, itemId: null, version: 1 })}
+              hasUnsavedChanges={hasUnsavedChanges}
+              clearEditingFromDeck={() => setEditingFromDeck({ deckId: null, itemId: null, version: 1, deckTitle: null })}
               openDeckPicker={openDeckPicker}
               onExportPNG={handleExportPNG}
               isExporting={isExporting}
@@ -767,6 +1123,12 @@ export default function App() {
           />
         </div>
       )}
+
+      {/* Custom Confirmation Modal */}
+      <ConfirmModal />
+      
+      {/* Toast Notifications */}
+      <ToastContainer />
     </Fragment>
   );
 }

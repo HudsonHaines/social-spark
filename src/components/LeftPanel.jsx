@@ -140,6 +140,7 @@ const LeftPanel = memo(function LeftPanel(props) {
     saveToDeck = () => {},
     updateInDeck = () => {},
     editingFromDeck = null,
+    hasUnsavedChanges = false,
     clearEditingFromDeck = () => {},
     openDeckPicker = () => {},
     // brand manager
@@ -351,16 +352,25 @@ const LeftPanel = memo(function LeftPanel(props) {
         <button
           onClick={() => editingFromDeck?.itemId ? updateInDeck() : addToDeck?.(post)}
           className={cx(
-            "flex flex-col items-center gap-1 p-3 rounded-lg transition-colors",
+            "relative flex flex-col items-center gap-1 p-3 rounded-lg transition-colors",
             editingFromDeck?.itemId 
-              ? "bg-green-500 text-white hover:bg-green-600"
+              ? hasUnsavedChanges 
+                ? "bg-orange-500 text-white hover:bg-orange-600" 
+                : "bg-green-500 text-white hover:bg-green-600"
               : "border border-gray-300 hover:bg-gray-50"
           )}
         >
+          {/* Unsaved changes indicator */}
+          {hasUnsavedChanges && editingFromDeck?.itemId && (
+            <div className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full border-2 border-white"></div>
+          )}
+          
           {editingFromDeck?.itemId ? (
             <>
-              <RefreshCw size={16} />
-              <span className="text-xs">Update v{(editingFromDeck.version || 1) + 1}</span>
+              <RefreshCw size={16} className={hasUnsavedChanges ? "animate-pulse" : ""} />
+              <span className="text-xs">
+                {hasUnsavedChanges ? "Save Changes" : `Update v${(editingFromDeck.version || 1) + 1}`}
+              </span>
             </>
           ) : (
             <>
