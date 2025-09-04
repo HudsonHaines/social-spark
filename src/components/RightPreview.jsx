@@ -3,7 +3,10 @@ import React, { forwardRef, useCallback, useEffect, useMemo } from "react";
 import { ensurePostShape, emptyPost } from "../data/postShape";
 import { useExportStability } from "../hooks/useExportStability";
 import { canPlayVideo, getVideoThumbnail } from "../data/videoUtils";
+import { useView } from "../contexts/ViewContext";
 import InstagramPost from "./InstagramPost";
+import MobileFrame from "./MobileFrame";
+import ViewToggle from "./ViewToggle";
 
 const cx = (...a) => a.filter(Boolean).join(" ");
 
@@ -20,6 +23,7 @@ const RightPreview = forwardRef(function RightPreview(
   },
   previewRef
 ) {
+  const { isMobile } = useView();
   const normalizedPost = useMemo(() => ensurePostShape(post || {}), [post]);
   const mediaCount = normalizedPost.media?.length || 0;
   const currentIndex = normalizedPost.activeIndex || 0;
@@ -150,14 +154,13 @@ const RightPreview = forwardRef(function RightPreview(
     }
   }, [attachNode, previewRef, normalizedPost.media, normalizedPost.videoSrc, normalizedPost.platform, currentIndex]);
 
-  return (
-    <div className={cx(normalizedPost.platform === "instagram" ? "ig-ui" : "fb-ui", "h-full flex flex-col")}>
-      <div className="flex-1 flex items-start justify-center overflow-y-auto p-4">
-        <div className="w-full flex items-start justify-center">
-          <div 
-            className="mx-auto flex-shrink-0" 
-            style={wrapperStyle}
-          >
+  // Extract post content to a separate component
+  function PostContent() {
+    return (
+      <div 
+        className="mx-auto flex-shrink-0" 
+        style={isMobile ? { width: '100%', maxWidth: 'none' } : wrapperStyle}
+      >
             {normalizedPost.platform === "instagram" ? (
               <InstagramPost 
                 post={normalizedPost}
@@ -169,7 +172,8 @@ const RightPreview = forwardRef(function RightPreview(
             ) : (
             <div ref={previewRef} className={cx(
               "bg-white overflow-hidden w-full",
-              normalizedPost.platform === "facebook" ? "fb-post-container" : "card p-0"
+              normalizedPost.platform === "facebook" ? "fb-post-container" : "card p-0",
+              isMobile ? "border-0 shadow-none rounded-none" : ""
             )}>
               <div className="flex items-center gap-3 px-4 py-3">
                 <div className="w-10 h-10 rounded-full bg-gray-200 overflow-hidden shrink-0">
@@ -184,7 +188,7 @@ const RightPreview = forwardRef(function RightPreview(
                 </div>
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center">
-                    <div className="brand-name font-semibold text-gray-900 truncate text-sm">
+                    <div className="brand-name font-semibold text-gray-900 truncate" style={{ fontSize: '15px', lineHeight: '20px' }}>
                       {normalizedPost.brand?.name || normalizedPost.brand?.username || "Brand"}
                     </div>
                     {normalizedPost.brand?.verified && (
@@ -195,10 +199,10 @@ const RightPreview = forwardRef(function RightPreview(
                       </div>
                     )}
                     <div className="ml-2 flex-shrink-0">
-                      <span className="text-xs text-gray-500 font-normal">Sponsored</span>
+                      <span className="text-gray-500 font-normal" style={{ fontSize: '12px' }}>Sponsored</span>
                     </div>
                   </div>
-                  <div className="meta text-xs text-gray-500 truncate">
+                  <div className="meta text-gray-500 truncate" style={{ fontSize: '13px', lineHeight: '16px' }}>
                     2h · 🌐
                   </div>
                 </div>
@@ -213,7 +217,7 @@ const RightPreview = forwardRef(function RightPreview(
 
               {normalizedPost.caption ? (
                 <div className="px-4 pb-3">
-                  <div className="whitespace-pre-wrap text-sm text-gray-900 leading-relaxed">
+                  <div className="whitespace-pre-wrap text-gray-900 leading-tight" style={{ fontSize: '15px', lineHeight: '20px' }}>
                     {normalizedPost.caption}
                   </div>
                 </div>
@@ -379,19 +383,19 @@ const RightPreview = forwardRef(function RightPreview(
                         <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
                         </svg>
-                        <span className="text-sm">Like</span>
+                        <span style={{ fontSize: '15px', fontWeight: '500' }}>Like</span>
                       </button>
                       <button className="flex items-center space-x-2 hover:text-blue-500 transition-colors">
                         <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
                         </svg>
-                        <span className="text-sm">Comment</span>
+                        <span style={{ fontSize: '15px', fontWeight: '500' }}>Comment</span>
                       </button>
                       <button className="flex items-center space-x-2 hover:text-blue-500 transition-colors">
                         <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.367 2.684 3 3 0 00-5.367-2.684z" />
                         </svg>
-                        <span className="text-sm">Share</span>
+                        <span style={{ fontSize: '15px', fontWeight: '500' }}>Share</span>
                       </button>
                     </div>
                   </div>
@@ -414,9 +418,34 @@ const RightPreview = forwardRef(function RightPreview(
             </div>
             )}
           </div>
+    );
+  }
+
+  return (
+    <div className={cx(
+      normalizedPost.platform === "instagram" ? "ig-ui" : "fb-ui", 
+      "h-full flex flex-col",
+      isMobile ? "mobile-view" : ""
+    )}>
+      {/* View Toggle */}
+      <div className="flex-shrink-0 px-4 py-3 border-b border-gray-200 bg-white">
+        <ViewToggle size="small" />
+      </div>
+      
+      <div className="flex-1 flex items-start justify-center overflow-y-auto p-4">
+        <div className="w-full flex items-start justify-center">
+          {isMobile ? (
+            <MobileFrame>
+              <div className="overflow-y-auto h-full">
+                <PostContent />
+              </div>
+            </MobileFrame>
+          ) : (
+            <PostContent />
+          )}
         </div>
       </div>
-
+      
       <style>{`
         .aspect-square { aspect-ratio: 1 / 1; }
         .aspect-video { aspect-ratio: 16 / 9; }
@@ -432,9 +461,82 @@ const RightPreview = forwardRef(function RightPreview(
           font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
         }
         
+        /* Mobile-specific styles for authentic Facebook appearance */
+        .mobile-view .fb-post-container {
+          border: none;
+          border-radius: 0;
+          box-shadow: none;
+          background: #ffffff;
+          font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+        }
+        
+        .mobile-view .ig-ui .insta-card {
+          border: none;
+          border-radius: 0;
+          box-shadow: none;
+        }
+        
+        /* Facebook mobile text styling overrides */
+        .mobile-view .fb-post-container .brand-name {
+          font-size: 15px;
+          line-height: 20px;
+          font-weight: 600;
+          color: #1c1e21;
+        }
+        
+        .mobile-view .fb-post-container .meta {
+          font-size: 13px;
+          line-height: 16px;
+          color: #65676b;
+        }
+        
         .fb-ui .brand-name {
           color: #1c1e21;
           font-weight: 600;
+        }
+        
+        .fb-ui .meta {
+          color: #65676b;
+          font-size: 13px;
+        }
+        
+        .fb-ui .card {
+          width: 500px;
+          border: 1px solid #ddd;
+          border-radius: 8px;
+          background: #fff;
+        }
+
+        .ig-ui .insta-card {
+          width: 470px;
+          background: #fff;
+          border: 1px solid #dbdbdb;
+        }
+        
+        .brand-name {
+          font-weight: 600;
+          color: #1c1e21;
+        }
+        
+        .metrics {
+          display: flex;
+          gap: 16px;
+          margin-top: 8px;
+          padding-left: 0;
+          flex-wrap: wrap;
+        }
+        
+        .metric {
+          display: flex;
+          align-items: center;
+          gap: 4px;
+          font-size: 14px;
+          color: #65676b;
+        }
+        
+        .fb-ui .metric-count {
+          font-weight: 600;
+          color: #1c1e21;
         }
         
         .fb-ui .meta {

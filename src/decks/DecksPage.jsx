@@ -29,6 +29,7 @@ import {
 } from "lucide-react";
 import PostPreviewModal from "./PostPreviewModal";
 import { getVideoThumbnail, canPlayVideo } from "../data/videoUtils";
+import ViewToggle from "../components/ViewToggle";
 
 const cx = (...a) => a.filter(Boolean).join(" ");
 
@@ -396,6 +397,9 @@ export default function DecksPage({
             Back
           </button>
           <div className="font-medium text-app-strong">Manage decks</div>
+        </div>
+        <div className="flex-1 flex justify-center">
+          <ViewToggle size="small" showLabels={false} />
         </div>
         <div className="flex items-center gap-2">
           <button

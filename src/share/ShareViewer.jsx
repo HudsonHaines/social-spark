@@ -3,8 +3,10 @@ import React, { useEffect, useMemo, useState, useCallback } from "react";
 import RightPreview from "../components/RightPreview";
 import { ensurePostShape } from "../data/postShape";
 import { supabase } from "../lib/supabaseClient";
+import { ViewProvider } from "../contexts/ViewContext";
+import ViewToggle from "../components/ViewToggle";
 
-export default function ShareViewer({ token }) {
+function ShareViewerInner({ token }) {
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
   const [deck, setDeck] = useState(null);
@@ -201,11 +203,14 @@ export default function ShareViewer({ token }) {
             </div>
           </div>
           
-          {posts.length > 1 && (
-            <div className="text-sm text-gray-500">
-              {idx + 1} of {posts.length}
-            </div>
-          )}
+          <div className="flex items-center gap-4">
+            <ViewToggle size="small" showLabels={false} />
+            {posts.length > 1 && (
+              <div className="text-sm text-gray-500">
+                {idx + 1} of {posts.length}
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
@@ -302,5 +307,13 @@ export default function ShareViewer({ token }) {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function ShareViewer({ token }) {
+  return (
+    <ViewProvider>
+      <ShareViewerInner token={token} />
+    </ViewProvider>
   );
 }
