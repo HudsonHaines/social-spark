@@ -1305,6 +1305,7 @@ export default function App() {
                 mode="create"
                 videoRef={videoRef}
                 showExport={true}
+                deckId={editingFromDeck.deckId}
               />
             )
         }

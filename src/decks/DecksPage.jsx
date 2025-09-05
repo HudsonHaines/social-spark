@@ -30,12 +30,14 @@ import {
   X,
   Copy,
   Edit2,
+  MessageSquare,
 } from "lucide-react";
 import PostPreviewModal from "./PostPreviewModal";
 import { getVideoThumbnail, canPlayVideo } from "../data/videoUtils";
 import { useConfirmModal } from "../components/ConfirmModal";
 import { useToast } from "../components/Toast";
 import { SkeletonDeckItem, SkeletonPostCard } from "../components/Skeleton";
+import { getUnresolvedCommentCounts } from "../data/comments";
 
 const cx = (...a) => a.filter(Boolean).join(" ");
 
@@ -86,6 +88,9 @@ export default function DecksPage({
   
   // Client share links state - track for all decks
   const [deckShareLinks, setDeckShareLinks] = useState({});
+  
+  // Comment counts state - track unresolved comments for all decks
+  const [deckCommentCounts, setDeckCommentCounts] = useState({});
 
   const { decks, items, activeId, loading } = state;
 
@@ -130,6 +135,9 @@ export default function DecksPage({
         
         // Load existing share links for all decks
         loadShareLinksForDecks(rows);
+        
+        // Load comment counts for all decks
+        loadCommentCountsForDecks(rows);
       } catch (error) {
         console.error('Load decks error:', error);
         if (mounted) {
@@ -191,6 +199,18 @@ export default function DecksPage({
     });
     
     setDeckShareLinks(linksMap);
+  };
+  
+  // Function to load comment counts for all decks
+  const loadCommentCountsForDecks = async (decksToCheck) => {
+    try {
+      const deckIds = decksToCheck.map(deck => deck.id);
+      const counts = await getUnresolvedCommentCounts(deckIds);
+      setDeckCommentCounts(counts);
+    } catch (error) {
+      console.error('Failed to load comment counts:', error);
+      setDeckCommentCounts({});
+    }
   };
 
   // Load items effect
@@ -882,6 +902,12 @@ export default function DecksPage({
                                         <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
                                           <Check className="w-2.5 h-2.5 mr-1" />
                                           Approved
+                                        </span>
+                                      )}
+                                      {deckCommentCounts[d.id] > 0 && (
+                                        <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-xs font-medium bg-orange-100 text-orange-800">
+                                          <MessageSquare className="w-2.5 h-2.5 mr-1" />
+                                          {deckCommentCounts[d.id]} unresolved
                                         </span>
                                       )}
                                     </div>

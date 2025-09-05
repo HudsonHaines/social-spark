@@ -57,6 +57,7 @@ export default function PostPreviewModal({ open, onClose, post, previewContext, 
               videoRef={videoRef}                  // Add videoRef for working video controls
               clamp={{ maxVmin: 85, maxPx: 550 }}  // consistent viewport sizing for full visibility
               showExport={false}                   // hide export button inside modal
+              deckId={previewContext?.deckId}      // pass deckId for comment system
               saveAsPng={() => {}}
               savingImg={false}
             />

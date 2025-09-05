@@ -6,8 +6,14 @@ import { supabase } from "../lib/supabaseClient";
 import { ViewProvider } from "../contexts/ViewContext";
 import ViewToggle from "../components/ViewToggle";
 import { Skeleton } from "../components/Skeleton";
+import CommentSystem from "../components/comments/CommentSystem";
+import { MessageSquare } from "lucide-react";
+import { useAuth } from "../auth/AuthProvider";
 
 function ShareViewerInner({ token }) {
+  const authContext = useAuth();
+  const user = authContext?.user || null;
+  
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
   const [deck, setDeck] = useState(null);
@@ -15,6 +21,8 @@ function ShareViewerInner({ token }) {
   const [idx, setIdx] = useState(0);
   const [brandInfo, setBrandInfo] = useState(null);
   const [organizationInfo, setOrganizationInfo] = useState(null);
+  const [showComments, setShowComments] = useState(false);
+  const [userIsInternal, setUserIsInternal] = useState(false);
 
   const [currentPost, setCurrentPost] = useState(() => ensurePostShape({}));
   const videoRef = useRef(null); // Add videoRef for proper video controls
@@ -30,6 +38,38 @@ function ShareViewerInner({ token }) {
 
   const goPrev = useCallback(() => setIdx((i) => (posts.length ? (i - 1 + posts.length) % posts.length : 0)), [posts.length]);
   const goNext = useCallback(() => setIdx((i) => (posts.length ? (i + 1) % posts.length : 0)), [posts.length]);
+  
+  // Check if user is internal to this deck (owner or organization member)
+  const checkUserIsInternal = useCallback(async (userId, deckData) => {
+    try {
+      // Check if user is deck owner
+      if (deckData.user_id === userId) {
+        setUserIsInternal(true);
+        return;
+      }
+      
+      // Check if user is member of deck's organization
+      if (deckData.organization_id) {
+        const { data: membership, error } = await supabase
+          .from('organization_memberships')
+          .select('role')
+          .eq('organization_id', deckData.organization_id)
+          .eq('user_id', userId)
+          .single();
+        
+        if (!error && membership) {
+          setUserIsInternal(true);
+          return;
+        }
+      }
+      
+      // User is not internal
+      setUserIsInternal(false);
+    } catch (error) {
+      console.error('Error checking user permissions:', error);
+      setUserIsInternal(false);
+    }
+  }, []);
 
   useEffect(() => {
     (async () => {
@@ -39,11 +79,20 @@ function ShareViewerInner({ token }) {
         if (error) throw error;
         if (data?.error) throw new Error(String(data.error));
         setDeck(data.deck);
-        setPosts((data.items || []).map((r) => r.post_json));
+        // Map posts with their deck item IDs for proper commenting
+        const postsWithIds = (data.items || []).map((r) => ({
+          ...ensurePostShape(r.post_json),
+          id: r.id // Use the deck item ID, not the post JSON id
+        }));
+        setPosts(postsWithIds);
+        
+        // Check if authenticated user is internal to this deck
+        if (user && data.deck) {
+          checkUserIsInternal(user.id, data.deck);
+        }
         
         // Extract brand info from first post that has it
-        const postsData = (data.items || []).map((r) => r.post_json);
-        const firstPostWithBrand = postsData.find(post => post?.brand && (post.brand.name || post.brand.profileSrc));
+        const firstPostWithBrand = postsWithIds.find(post => post?.brand && (post.brand.name || post.brand.profileSrc));
         if (firstPostWithBrand?.brand) {
           setBrandInfo({
             name: firstPostWithBrand.brand.name || 'Client',
@@ -138,6 +187,15 @@ function ShareViewerInner({ token }) {
       }
     })();
   }, [token]);
+  
+  // Check user permissions when auth state changes
+  useEffect(() => {
+    if (user && deck) {
+      checkUserIsInternal(user.id, deck);
+    } else {
+      setUserIsInternal(false);
+    }
+  }, [user, deck, checkUserIsInternal]);
 
   useEffect(() => {
     const onKey = (e) => {
@@ -211,12 +269,27 @@ function ShareViewerInner({ token }) {
                 {idx + 1} of {posts.length}
               </div>
             )}
+            
+            {/* Comments toggle button */}
+            {deck?.id && (
+              <button
+                onClick={() => setShowComments(!showComments)}
+                className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                  showComments
+                    ? "bg-blue-100 text-blue-700 hover:bg-blue-200"
+                    : "text-gray-600 hover:bg-gray-100"
+                }`}
+              >
+                <MessageSquare className="w-4 h-4" />
+                Comments
+              </button>
+            )}
           </div>
         </div>
       </div>
 
-      {/* Main content area - focused on posts */}
-      <div className="max-w-4xl mx-auto px-6 py-8">
+      {/* Main content area - dynamic layout based on comments state */}
+      <div className={`mx-auto px-6 py-8 ${showComments ? 'max-w-7xl' : 'max-w-4xl'}`}>
         {loading ? (
           <div className="space-y-6">
             {/* Header skeleton */}
@@ -250,61 +323,81 @@ function ShareViewerInner({ token }) {
             <p className="text-gray-600">No content available</p>
           </div>
         ) : (
-          <div className="space-y-6">
-            {/* Post content - the main focus */}
-            <div className="flex justify-center">
-              <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-                <RightPreview
-                  post={post}
-                  setPost={setCurrentPost}
-                  mode="present"
-                  videoRef={videoRef}                  // Add videoRef for working video controls
-                  clamp={{ maxVmin: 85, maxPx: 550 }}
-                  showExport={false}
-                />
+          <div className={`${showComments ? 'grid grid-cols-2 gap-8 items-start' : 'space-y-6'}`}>
+            {/* Post content section */}
+            <div className={`${showComments ? '' : 'flex justify-center'}`}>
+              <div className="space-y-6">
+                {/* Post content */}
+                <div className={`${showComments ? '' : 'flex justify-center'}`}>
+                  <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+                    <RightPreview
+                      post={post}
+                      setPost={setCurrentPost}
+                      mode="present"
+                      videoRef={videoRef}
+                      clamp={{ maxVmin: showComments ? 70 : 85, maxPx: showComments ? 450 : 550 }}
+                      showExport={false}
+                      deckId={deck?.id}
+                    />
+                  </div>
+                </div>
+
+                {/* Navigation - only show when not in comments mode for cleaner layout */}
+                {posts.length > 1 && (
+                  <div className={`flex items-center ${showComments ? 'justify-start' : 'justify-center'} gap-4 pt-4`}>
+                    <button 
+                      className="px-4 py-2 text-gray-600 hover:text-gray-900 hover:bg-gray-50 rounded-lg transition-colors flex items-center gap-2"
+                      onClick={goPrev}
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                      </svg>
+                      Previous
+                    </button>
+                    
+                    <div className="flex items-center gap-1">
+                      {Array.from({ length: Math.min(posts.length, 5) }, (_, i) => {
+                        if (posts.length > 5 && i === 4) {
+                          return <span key="ellipsis" className="text-gray-400">...</span>;
+                        }
+                        const pageIndex = posts.length > 5 && i === 4 ? posts.length - 1 : i;
+                        return (
+                          <button
+                            key={pageIndex}
+                            onClick={() => setIdx(pageIndex)}
+                            className={`w-2 h-2 rounded-full transition-colors ${
+                              idx === pageIndex ? 'bg-gray-900' : 'bg-gray-300'
+                            }`}
+                          />
+                        );
+                      })}
+                    </div>
+
+                    <button 
+                      className="px-4 py-2 text-gray-600 hover:text-gray-900 hover:bg-gray-50 rounded-lg transition-colors flex items-center gap-2"
+                      onClick={goNext}
+                    >
+                      Next
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                      </svg>
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
 
-            {/* Clean navigation */}
-            {posts.length > 1 && (
-              <div className="flex items-center justify-center gap-4 pt-4">
-                <button 
-                  className="px-4 py-2 text-gray-600 hover:text-gray-900 hover:bg-gray-50 rounded-lg transition-colors flex items-center gap-2"
-                  onClick={goPrev}
-                >
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-                  </svg>
-                  Previous
-                </button>
-                
-                <div className="flex items-center gap-1">
-                  {Array.from({ length: Math.min(posts.length, 5) }, (_, i) => {
-                    if (posts.length > 5 && i === 4) {
-                      return <span key="ellipsis" className="text-gray-400">...</span>;
-                    }
-                    const pageIndex = posts.length > 5 && i === 4 ? posts.length - 1 : i;
-                    return (
-                      <button
-                        key={pageIndex}
-                        onClick={() => setIdx(pageIndex)}
-                        className={`w-2 h-2 rounded-full transition-colors ${
-                          idx === pageIndex ? 'bg-gray-900' : 'bg-gray-300'
-                        }`}
-                      />
-                    );
-                  })}
-                </div>
-
-                <button 
-                  className="px-4 py-2 text-gray-600 hover:text-gray-900 hover:bg-gray-50 rounded-lg transition-colors flex items-center gap-2"
-                  onClick={goNext}
-                >
-                  Next
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                  </svg>
-                </button>
+            {/* Comments section - only visible when showComments is true */}
+            {showComments && deck?.id && post?.id && (
+              <div className="sticky top-8">
+                <CommentSystem
+                  deckId={deck.id}
+                  postId={post.id}  // Post-specific comments
+                  isOpen={showComments}
+                  onClose={() => setShowComments(false)}
+                  position="inline"
+                  isClientView={!userIsInternal}  // Show all comments to internal users, client-only to others
+                />
               </div>
             )}
           </div>

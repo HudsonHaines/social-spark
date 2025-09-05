@@ -1,8 +1,9 @@
 // src/components/RightPreview.jsx
-import React, { forwardRef, useCallback, useEffect, useMemo, useImperativeHandle, useRef } from "react";
+import React, { forwardRef, useCallback, useEffect, useMemo, useImperativeHandle, useRef, useState } from "react";
 import { ensurePostShape, emptyPost } from "../data/postShape";
 import { useExportStability } from "../hooks/useExportStability";
 import { useView } from "../contexts/ViewContext";
+import { MessageSquare } from "lucide-react";
 import InstagramPost from "./InstagramPost";
 import InstagramReel from "./InstagramReel";
 import FacebookReel from "./FacebookReel";
@@ -10,6 +11,7 @@ import SimpleInstagramReel from "./SimpleInstagramReel";
 import SimpleFacebookReel from "./SimpleFacebookReel";
 import MobileFrame from "./MobileFrame";
 import ViewToggle from "./ViewToggle";
+import CommentSystem from "./comments/CommentSystem";
 
 const cx = (...a) => a.filter(Boolean).join(" ");
 
@@ -49,7 +51,8 @@ const RightPreview = forwardRef(function RightPreview(
     savingImg = false,
     videoRef,         // optional
     clamp,            // { maxVmin?: number, maxPx?: number } optional
-    showExport = true // set false to hide the Export button
+    showExport = true, // set false to hide the Export button
+    deckId            // required for comment system
   },
   previewRef
 ) {
@@ -58,6 +61,7 @@ const RightPreview = forwardRef(function RightPreview(
   // Create a separate ref for the exportable content
   const exportRef = useRef(null);
   const { isMobile } = useView();
+  const [showComments, setShowComments] = useState(false);
   const normalizedPost = useMemo(() => {
     const result = ensurePostShape(post || {});
     return result;
@@ -466,7 +470,25 @@ const RightPreview = forwardRef(function RightPreview(
     )}>
       {/* View Toggle */}
       <div className="flex-shrink-0 px-4 py-3 border-b border-gray-200 bg-white">
-        <ViewToggle size="small" />
+        <div className="flex items-center justify-between">
+          <ViewToggle size="small" />
+          
+          {/* Comment Toggle Button */}
+          {deckId && mode === "create" && (
+            <button
+              onClick={() => setShowComments(!showComments)}
+              className={cx(
+                "flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors",
+                showComments
+                  ? "bg-blue-100 text-blue-700 hover:bg-blue-200"
+                  : "text-gray-600 hover:bg-gray-100"
+              )}
+            >
+              <MessageSquare className="w-4 h-4" />
+              Comments
+            </button>
+          )}
+        </div>
       </div>
       
       <div className="flex-1 flex items-start justify-center overflow-y-auto p-4">
@@ -487,6 +509,17 @@ const RightPreview = forwardRef(function RightPreview(
           )}
         </div>
       </div>
+      
+      {/* Comment System */}
+      {showComments && deckId && (
+        <CommentSystem
+          deckId={deckId}
+          postId={normalizedPost.id}
+          isOpen={showComments}
+          onClose={() => setShowComments(false)}
+          position="right"
+        />
+      )}
       
       <style>{`
         .aspect-square { aspect-ratio: 1 / 1; }

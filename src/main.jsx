@@ -46,9 +46,13 @@ function Router() {
 
   if (shareToken) {
     return (
-      <Suspense fallback={<div className="p-6 text-sm text-app-muted">Loading…</div>}>
-        <ShareViewer token={shareToken} />
-      </Suspense>
+      <ToastProvider>
+        <AuthProvider>
+          <Suspense fallback={<div className="p-6 text-sm text-app-muted">Loading…</div>}>
+            <ShareViewer token={shareToken} />
+          </Suspense>
+        </AuthProvider>
+      </ToastProvider>
     );
   }
 
