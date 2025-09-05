@@ -26,27 +26,23 @@ export function OrganizationProvider({ children }) {
     if (organizations.length > 0 && !currentOrganization) {
       // Get the stored organization preference
       const storedOrgId = localStorage.getItem('currentOrganizationId');
-      console.log('Setting default org, stored:', storedOrgId);
       
       // If there's a stored preference, try to use it
       if (storedOrgId) {
         if (storedOrgId === 'personal') {
           // User explicitly chose personal context
-          console.log('Setting to personal context');
           setCurrentOrganization(null);
           return;
         }
         
         const storedOrg = organizations.find(org => org.id === storedOrgId);
         if (storedOrg) {
-          console.log('Setting to stored org:', storedOrg);
           setCurrentOrganization(storedOrg);
           return;
         }
       }
       
       // No stored preference or invalid stored org - default to first organization
-      console.log('Defaulting to first org:', organizations[0]);
       setCurrentOrganization(organizations[0]);
     }
   }, [organizations, currentOrganization]);
@@ -65,7 +61,6 @@ export function OrganizationProvider({ children }) {
   };
 
   const switchOrganization = (organization) => {
-    console.log('Switching to organization:', organization);
     setCurrentOrganization(organization);
     if (organization) {
       localStorage.setItem('currentOrganizationId', organization.id);

@@ -11,13 +11,6 @@
  */
 export async function extractVideoThumbnail(videoDataURL, timeSeconds = 0.1) {
   return new Promise((resolve) => {
-    console.log('🎬 Starting video thumbnail extraction...');
-    console.log('📊 Video Data URL info:', {
-      isDataURL: videoDataURL?.startsWith('data:video/'),
-      sizeKB: videoDataURL ? (videoDataURL.length / 1024).toFixed(1) : 'N/A',
-      mimeType: videoDataURL?.match(/^data:(.*?);/)?.[1] || 'unknown',
-      prefix: videoDataURL?.substring(0, 50) + '...'
-    });
     
     const video = document.createElement('video');
     video.crossOrigin = 'anonymous';
@@ -46,18 +39,11 @@ export async function extractVideoThumbnail(videoDataURL, timeSeconds = 0.1) {
     };
     
     const resolveWithThumbnail = (thumbnail) => {
-      console.log('✅ Video thumbnail extracted successfully, size:', (thumbnail.length / 1024).toFixed(1) + 'KB');
-      console.log('🎯 Final thumbnail info:', {
-        isDataURL: thumbnail?.startsWith('data:image/'),
-        format: thumbnail?.match(/^data:image\/(.*?);/)?.[1] || 'unknown',
-        sizeKB: (thumbnail?.length / 1024).toFixed(1)
-      });
       cleanup();
       resolve(thumbnail);
     };
     
     video.onloadedmetadata = () => {
-      console.log(`📹 Video metadata loaded: ${video.videoWidth}x${video.videoHeight}, duration: ${video.duration}s`);
       
       if (video.duration <= 0) {
         resolveWithPlaceholder('Video has invalid duration');
@@ -66,19 +52,10 @@ export async function extractVideoThumbnail(videoDataURL, timeSeconds = 0.1) {
       
       // Capture from the very first frame for better reliability
       const captureTime = 0.1; // Always use 0.1 seconds
-      console.log(`⏰ Seeking to ${captureTime}s for thumbnail`);
       video.currentTime = captureTime;
     };
     
     video.oncanplay = () => {
-      console.log('🎮 Video can play, attempting to draw frame...');
-      console.log('📏 Video dimensions check:', {
-        videoWidth: video.videoWidth,
-        videoHeight: video.videoHeight,
-        currentTime: video.currentTime,
-        duration: video.duration,
-        readyState: video.readyState
-      });
       
       // Try to extract frame immediately when video can play
       setTimeout(() => {
@@ -120,27 +97,10 @@ export async function extractVideoThumbnail(videoDataURL, timeSeconds = 0.1) {
             drawX = (canvas.width - drawWidth) / 2;
           }
           
-          console.log('📐 Draw calculations:', {
-            videoAspect: videoAspect.toFixed(2),
-            canvasAspect: canvasAspect.toFixed(2),
-            drawX, drawY, drawWidth: drawWidth.toFixed(0), drawHeight: drawHeight.toFixed(0)
-          });
-          
-          console.log('🖼️ Drawing video frame to canvas...');
           ctx.drawImage(video, drawX, drawY, drawWidth, drawHeight);
-          console.log('✅ Video frame drawn successfully');
           
           // Create thumbnail with good compression
-          console.log('🗜️ Converting canvas to data URL...');
           const thumbnail = canvas.toDataURL('image/jpeg', 0.85);
-          
-          console.log('🔍 Thumbnail validation:', {
-            hasThumbnail: !!thumbnail,
-            isDataURL: thumbnail?.startsWith('data:image/'),
-            length: thumbnail?.length || 0,
-            sizeKB: thumbnail ? (thumbnail.length / 1024).toFixed(1) : 'N/A',
-            prefix: thumbnail?.substring(0, 30) + '...'
-          });
           
           if (thumbnail && thumbnail.length > 1000) { // Basic validity check
             resolveWithThumbnail(thumbnail);
@@ -154,7 +114,6 @@ export async function extractVideoThumbnail(videoDataURL, timeSeconds = 0.1) {
     };
     
     video.onseeked = () => {
-      console.log(`Video seeked to ${video.currentTime}s`);
       // canplay handler will do the extraction
     };
     
@@ -178,7 +137,6 @@ export async function extractVideoThumbnail(videoDataURL, timeSeconds = 0.1) {
       originalResolve(value);
     };
     
-    console.log('Setting video source...');
     video.src = videoDataURL;
   });
 }
@@ -279,23 +237,17 @@ export async function processVideoForDeck(videoDataURL) {
   }
   
   try {
-    console.log('Processing video for deck storage...');
     
     // Get video metadata
-    console.log('Getting video metadata...');
     const metadata = await getVideoMetadata(videoDataURL);
-    console.log('Video metadata:', metadata);
     
     // Extract thumbnail
-    console.log('Extracting video thumbnail...');
     const thumbnail = await extractVideoThumbnail(videoDataURL);
     
     const thumbnailSize = thumbnail ? (thumbnail.length / 1024).toFixed(1) : 'N/A';
-    console.log(`Thumbnail extracted: ${thumbnailSize}KB`);
     
     // Check video size
     const videoSizeMB = (videoDataURL.length * 0.75) / (1024 * 1024);
-    console.log(`Video size: ${videoSizeMB.toFixed(2)}MB`);
     
     // For large videos, we'll keep the original for now but add metadata
     let processedVideoSrc = videoDataURL;
@@ -315,13 +267,6 @@ export async function processVideoForDeck(videoDataURL) {
         storageStrategy: storageStrategy
       }
     };
-    
-    console.log('Video processing complete:', {
-      hasVideo: !!result.videoSrc,
-      hasThumbnail: !!result.thumbnail,
-      thumbnailType: typeof result.thumbnail,
-      thumbnailLength: result.thumbnail?.length
-    });
     
     return result;
     
@@ -349,49 +294,23 @@ export async function processVideoForDeck(videoDataURL) {
  * @returns {string} - Thumbnail URL or placeholder
  */
 export function getVideoThumbnail(post) {
-  console.log('🔍 getVideoThumbnail called for post:', { 
-    postId: post.id,
-    hasVideoSrc: !!post.videoSrc, 
-    hasVideoThumbnail: !!post.videoThumbnail,
-    videoSrcType: typeof post.videoSrc,
-    thumbnailType: typeof post.videoThumbnail,
-    thumbnailIsDataURL: post.videoThumbnail?.startsWith('data:'),
-    thumbnailIsURL: post.videoThumbnail?.startsWith('http') || post.videoThumbnail?.includes('supabase'),
-    thumbnailPrefix: post.videoThumbnail?.substring(0, 30) + '...',
-    videoSrcPrefix: post.videoSrc?.substring(0, 30) + '...'
-  });
   
   // If we have a stored thumbnail, use it (could be data URL or regular URL)
   if (post.videoThumbnail) {
     if (post.videoThumbnail.startsWith('data:image/') || 
         post.videoThumbnail.startsWith('http') ||
         post.videoThumbnail.includes('supabase')) {
-      console.log('✅ Using stored video thumbnail:', {
-        format: post.videoThumbnail.startsWith('data:') ? 'data URL' : 'URL',
-        isImage: post.videoThumbnail.startsWith('data:image/'),
-        sizeKB: post.videoThumbnail.startsWith('data:') ? (post.videoThumbnail.length / 1024).toFixed(1) : 'N/A',
-        preview: post.videoThumbnail.substring(0, 50) + '...'
-      });
       return post.videoThumbnail;
     } else {
-      console.warn('⚠️ Invalid thumbnail format detected:', {
-        thumbnailValue: post.videoThumbnail.substring(0, 100),
-        isString: typeof post.videoThumbnail === 'string',
-        length: post.videoThumbnail.length
-      });
+      console.warn('⚠️ Invalid thumbnail format detected:', post.videoThumbnail.substring(0, 100));
     }
   }
   
   // If video exists but no thumbnail, create placeholder
   if (post.videoSrc) {
-    console.log('📷 No valid thumbnail found, creating placeholder for video:', {
-      videoSrc: post.videoSrc.substring(0, 50) + '...',
-      reason: post.videoThumbnail ? 'invalid thumbnail format' : 'no thumbnail'
-    });
     return createVideoPlaceholder(400, 300);
   }
   
-  console.log('❌ No video found, returning null');
   return null;
 }
 
@@ -402,34 +321,28 @@ export function getVideoThumbnail(post) {
  */
 export function canPlayVideo(videoSrc) {
   if (!videoSrc) {
-    console.log('canPlayVideo: No video source');
     return false;
   }
   
   // Data URLs can be played
   if (videoSrc.startsWith('data:video/')) {
-    console.log('canPlayVideo: Data URL video - can play');
     return true;
   }
   
   // HTTP/HTTPS URLs can be played
   if (videoSrc.startsWith('http://') || videoSrc.startsWith('https://')) {
-    console.log('canPlayVideo: HTTP URL video - can play');
     return true;
   }
   
   // Placeholders cannot be played
   if (videoSrc.startsWith('[') && videoSrc.endsWith(']')) {
-    console.log('canPlayVideo: Placeholder video - cannot play:', videoSrc);
     return false;
   }
   
   // Supabase URLs can be played
   if (videoSrc.includes('supabase')) {
-    console.log('canPlayVideo: Supabase URL - can play');
     return true;
   }
   
-  console.log('canPlayVideo: Unknown video format, assuming playable:', videoSrc);
   return true;
 }

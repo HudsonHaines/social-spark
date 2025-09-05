@@ -18,6 +18,9 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../auth/AuthProvider';
 import { useOrganization } from '../organizations/OrganizationProvider';
+import { useToast } from '../components/Toast';
+import { useConfirmModal } from '../components/ConfirmModal';
+import { SkeletonDeckItem } from '../components/Skeleton';
 import { 
   getUserDeckShares, 
   revokeDeckShare, 
@@ -29,6 +32,8 @@ import {
 const ShareLinksPage = () => {
   const { user } = useAuth();
   const { currentOrganization } = useOrganization();
+  const { toast } = useToast();
+  const { confirm } = useConfirmModal();
   const [shareLinks, setShareLinks] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -114,25 +119,27 @@ const ShareLinksPage = () => {
       await navigator.clipboard.writeText(url);
       setCopiedToken(token);
       setTimeout(() => setCopiedToken(null), 2000);
+      toast.success('Share link copied to clipboard!');
     } catch (err) {
       console.error('Failed to copy to clipboard:', err);
+      toast.error('Failed to copy link to clipboard');
     }
-  }, []);
+  }, [toast]);
 
   // Revoke share link
   const handleRevoke = useCallback(async (token) => {
-    if (!confirm('Are you sure you want to revoke this share link? This action cannot be undone.')) {
-      return;
-    }
+    const confirmed = await confirm('Are you sure you want to revoke this share link? This action cannot be undone.');
+    if (!confirmed) return;
     
     setUpdating(prev => new Set([...prev, token]));
     
     try {
       await revokeDeckShare(token);
       await loadShareLinks(); // Refresh the list
+      toast.success('Share link revoked successfully');
     } catch (err) {
       console.error('Failed to revoke share link:', err);
-      alert('Failed to revoke share link: ' + err.message);
+      toast.error('Failed to revoke share link: ' + err.message);
     } finally {
       setUpdating(prev => {
         const newSet = new Set(prev);
@@ -140,22 +147,22 @@ const ShareLinksPage = () => {
         return newSet;
       });
     }
-  }, [loadShareLinks]);
+  }, [loadShareLinks, confirm, toast]);
 
   // Delete share link permanently
   const handleDelete = useCallback(async (token) => {
-    if (!confirm('Are you sure you want to permanently delete this share link? This will remove all history and cannot be undone.')) {
-      return;
-    }
+    const confirmed = await confirm('Are you sure you want to permanently delete this share link? This will remove all history and cannot be undone.');
+    if (!confirmed) return;
     
     setUpdating(prev => new Set([...prev, token]));
     
     try {
       await deleteDeckShare(token);
       await loadShareLinks(); // Refresh the list
+      toast.success('Share link deleted permanently');
     } catch (err) {
       console.error('Failed to delete share link:', err);
-      alert('Failed to delete share link: ' + err.message);
+      toast.error('Failed to delete share link: ' + err.message);
     } finally {
       setUpdating(prev => {
         const newSet = new Set(prev);
@@ -163,7 +170,7 @@ const ShareLinksPage = () => {
         return newSet;
       });
     }
-  }, [loadShareLinks]);
+  }, [loadShareLinks, confirm, toast]);
 
   // Update expiration
   const handleUpdateExpiration = useCallback(async (token, newExpirationDate) => {
@@ -172,9 +179,10 @@ const ShareLinksPage = () => {
     try {
       await updateDeckShareExpiration(token, newExpirationDate);
       await loadShareLinks(); // Refresh the list
+      toast.success('Expiration date updated successfully');
     } catch (err) {
       console.error('Failed to update expiration:', err);
-      alert('Failed to update expiration: ' + err.message);
+      toast.error('Failed to update expiration: ' + err.message);
     } finally {
       setUpdating(prev => {
         const newSet = new Set(prev);
@@ -182,7 +190,7 @@ const ShareLinksPage = () => {
         return newSet;
       });
     }
-  }, [loadShareLinks]);
+  }, [loadShareLinks, toast]);
 
   // Bulk operations
   const handleSelectAll = useCallback(() => {
@@ -207,9 +215,8 @@ const ShareLinksPage = () => {
 
   const handleBulkRevoke = useCallback(async () => {
     if (selectedLinks.size === 0) return;
-    if (!confirm(`Are you sure you want to revoke ${selectedLinks.size} share link(s)? This action cannot be undone.`)) {
-      return;
-    }
+    const confirmed = await confirm(`Are you sure you want to revoke ${selectedLinks.size} share link(s)? This action cannot be undone.`);
+    if (!confirmed) return;
 
     setBulkUpdating(true);
     
@@ -217,20 +224,19 @@ const ShareLinksPage = () => {
       await Promise.all(Array.from(selectedLinks).map(token => revokeDeckShare(token)));
       await loadShareLinks();
       setSelectedLinks(new Set());
-      alert(`Successfully revoked ${selectedLinks.size} share link(s).`);
+      toast.success(`Successfully revoked ${selectedLinks.size} share link(s)`);
     } catch (err) {
       console.error('Failed to bulk revoke:', err);
-      alert('Failed to revoke some links: ' + err.message);
+      toast.error('Failed to revoke some links: ' + err.message);
     } finally {
       setBulkUpdating(false);
     }
-  }, [selectedLinks, loadShareLinks]);
+  }, [selectedLinks, loadShareLinks, confirm, toast]);
 
   const handleBulkDelete = useCallback(async () => {
     if (selectedLinks.size === 0) return;
-    if (!confirm(`Are you sure you want to permanently delete ${selectedLinks.size} share link(s)? This will remove all history and cannot be undone.`)) {
-      return;
-    }
+    const confirmed = await confirm(`Are you sure you want to permanently delete ${selectedLinks.size} share link(s)? This will remove all history and cannot be undone.`);
+    if (!confirmed) return;
 
     setBulkUpdating(true);
     
@@ -238,14 +244,14 @@ const ShareLinksPage = () => {
       await Promise.all(Array.from(selectedLinks).map(token => deleteDeckShare(token)));
       await loadShareLinks();
       setSelectedLinks(new Set());
-      alert(`Successfully deleted ${selectedLinks.size} share link(s).`);
+      toast.success(`Successfully deleted ${selectedLinks.size} share link(s)`);
     } catch (err) {
       console.error('Failed to bulk delete:', err);
-      alert('Failed to delete some links: ' + err.message);
+      toast.error('Failed to delete some links: ' + err.message);
     } finally {
       setBulkUpdating(false);
     }
-  }, [selectedLinks, loadShareLinks]);
+  }, [selectedLinks, loadShareLinks, confirm, toast]);
 
   const handleBulkExpire = useCallback(async () => {
     if (selectedLinks.size === 0) return;
@@ -260,14 +266,14 @@ const ShareLinksPage = () => {
       ));
       await loadShareLinks();
       setSelectedLinks(new Set());
-      alert(`Successfully updated expiration for ${selectedLinks.size} share link(s).`);
+      toast.success(`Successfully updated expiration for ${selectedLinks.size} share link(s)`);
     } catch (err) {
       console.error('Failed to bulk update expiration:', err);
-      alert('Failed to update some links: ' + err.message);
+      toast.error('Failed to update some links: ' + err.message);
     } finally {
       setBulkUpdating(false);
     }
-  }, [selectedLinks, loadShareLinks]);
+  }, [selectedLinks, loadShareLinks, toast]);
 
   // Get links expiring soon (within 7 days)
   const expiringSoonLinks = useMemo(() => {
@@ -329,9 +335,53 @@ const ShareLinksPage = () => {
   if (loading) {
     return (
       <div className="py-8">
-        <div className="text-center">
-          <RefreshCw className="animate-spin mx-auto mb-4" size={24} />
-          <p className="text-app-muted">Loading share links...</p>
+        {/* Header Skeleton */}
+        <div className="mb-6">
+          <div className="h-8 w-64 bg-gray-200 rounded mb-2 animate-pulse"></div>
+          <div className="h-4 w-96 bg-gray-200 rounded animate-pulse"></div>
+        </div>
+
+        {/* Controls Skeleton */}
+        <div className="card p-4 mb-6">
+          <div className="flex gap-4 items-center justify-between mb-4">
+            <div className="flex gap-4">
+              <div className="h-16 w-32 bg-gray-200 rounded animate-pulse"></div>
+              <div className="h-16 w-32 bg-gray-200 rounded animate-pulse"></div>
+            </div>
+            <div className="h-10 w-24 bg-gray-200 rounded animate-pulse"></div>
+          </div>
+          <div className="h-10 w-full bg-gray-200 rounded animate-pulse"></div>
+        </div>
+
+        {/* Share Links Skeleton */}
+        <div className="space-y-4">
+          {Array.from({ length: 3 }, (_, i) => (
+            <div key={i} className="card p-4">
+              <div className="flex items-start justify-between mb-3">
+                <div className="flex items-center gap-3 flex-1">
+                  <div className="w-4 h-4 bg-gray-200 rounded animate-pulse"></div>
+                  <div className="flex-1">
+                    <div className="flex items-center gap-3 mb-2">
+                      <div className="h-5 w-48 bg-gray-200 rounded animate-pulse"></div>
+                      <div className="h-6 w-16 bg-gray-200 rounded-full animate-pulse"></div>
+                    </div>
+                    <div className="space-y-2">
+                      <div className="h-4 w-32 bg-gray-200 rounded animate-pulse"></div>
+                      <div className="h-4 w-28 bg-gray-200 rounded animate-pulse"></div>
+                      <div className="h-4 w-36 bg-gray-200 rounded animate-pulse"></div>
+                      <div className="h-4 w-20 bg-gray-200 rounded animate-pulse"></div>
+                    </div>
+                  </div>
+                </div>
+                <div className="flex gap-2">
+                  {Array.from({ length: 5 }, (_, j) => (
+                    <div key={j} className="w-9 h-9 bg-gray-200 rounded animate-pulse"></div>
+                  ))}
+                </div>
+              </div>
+              <div className="h-8 w-full bg-gray-200 rounded animate-pulse"></div>
+            </div>
+          ))}
         </div>
       </div>
     );

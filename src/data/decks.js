@@ -60,6 +60,159 @@ export async function renameDeck(deckId, newTitle) {
   return data;
 }
 
+export async function updateDeckApproval(deckId, approved) {
+  validateDeckId(deckId);
+  if (typeof approved !== 'boolean') throw new Error('Approved must be a boolean value');
+  
+  const { data, error } = await supabase
+    .from("decks")
+    .update({ approved })
+    .eq("id", deckId)
+    .select("id, title, created_at, approved")
+    .single();
+    
+  if (error) throw error;
+  return data;
+}
+
+export async function getDeck(deckId) {
+  validateDeckId(deckId);
+  
+  const { data, error } = await supabase
+    .from("decks")
+    .select("id, title, created_at, approved")
+    .eq("id", deckId)
+    .single();
+    
+  if (error) throw error;
+  return data;
+}
+
+// Delivery link functions (similar to share links but for social media managers)
+export async function getExistingDeliveryLink(deckId) {
+  const { data, error } = await supabase
+    .from("deck_delivery_links")
+    .select(`
+      token,
+      expires_at,
+      created_at,
+      is_revoked
+    `)
+    .eq("deck_id", deckId)
+    .eq("is_revoked", false)
+    .order("created_at", { ascending: false })
+    .limit(1);
+
+  if (error) throw error;
+  return data?.[0] || null;
+}
+
+async function createDeliveryLink(deckId, { days = 365 } = {}) {
+  const token = crypto.randomUUID();
+  const expires_at = new Date();
+  expires_at.setDate(expires_at.getDate() + days);
+
+  const { error } = await supabase
+    .from("deck_delivery_links")
+    .insert([{ deck_id: deckId, token, expires_at }]);
+
+  if (error) throw error;
+  return token;
+}
+
+// Get or create a delivery link for a deck (reuses existing non-revoked links)
+export async function getOrCreateDeliveryLink(deckId, { days = 365 } = {}) {
+  validateDeckId(deckId);
+  
+  try {
+    // First check if there's an existing non-revoked delivery link
+    const existing = await getExistingDeliveryLink(deckId);
+    
+    if (existing && existing.token) {
+      // Check if it's not expired (or has no expiration)
+      if (!existing.expires_at || new Date(existing.expires_at) > new Date()) {
+        return existing.token;
+      }
+    }
+    
+    // If no existing valid link, create a new one
+    return await createDeliveryLink(deckId, { days });
+  } catch (error) {
+    throw handleSupabaseError(error, { operation: 'getOrCreateDeliveryLink', deckId });
+  }
+}
+
+export async function revokeDeliveryLink(token) {
+  if (!validators.nonEmptyString(token)) {
+    throw handleSupabaseError(new Error('Valid delivery token is required'), { token });
+  }
+  
+  try {
+    const { error } = await supabase
+      .from("deck_delivery_links")
+      .update({ 
+        is_revoked: true, 
+        revoked_at: new Date().toISOString() 
+      })
+      .eq("token", token);
+    
+    if (error) throw error;
+    return true;
+  } catch (error) {
+    throw handleSupabaseError(error, { operation: 'revokeDeliveryLink', token });
+  }
+}
+
+// Get deck data from delivery token (for delivery page)
+export async function getDeckFromDeliveryToken(token) {
+  if (!validators.nonEmptyString(token)) {
+    throw new Error('Valid delivery token is required');
+  }
+  
+  try {
+    const { data, error } = await supabase
+      .from("deck_delivery_links")
+      .select(`
+        token,
+        expires_at,
+        is_revoked,
+        decks!inner (
+          id,
+          title,
+          created_at,
+          approved
+        )
+      `)
+      .eq("token", token)
+      .eq("is_revoked", false)
+      .single();
+    
+    if (error) {
+      if (error.code === 'PGRST116') {
+        throw new Error('Delivery link not found or has been revoked');
+      }
+      throw error;
+    }
+    
+    // Check if link is expired
+    if (data.expires_at && new Date(data.expires_at) <= new Date()) {
+      throw new Error('Delivery link has expired');
+    }
+    
+    // Check if deck is approved
+    if (!data.decks.approved) {
+      throw new Error('This deck is no longer approved for delivery');
+    }
+    
+    return {
+      deckId: data.decks.id,
+      deck: data.decks
+    };
+  } catch (error) {
+    throw handleSupabaseError(error, { operation: 'getDeckFromDeliveryToken', token });
+  }
+}
+
 export async function addItemToDeck(deckId, postJson, orderIndex = null) {
   validateDeckId(deckId);
   if (!postJson || typeof postJson !== 'object') throw new Error('Invalid post data');

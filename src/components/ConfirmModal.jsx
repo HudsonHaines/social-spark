@@ -1,5 +1,5 @@
 // src/components/ConfirmModal.jsx
-import React from "react";
+import React, { memo } from "react";
 import { AlertTriangle, CheckCircle, Info, XCircle, X } from "lucide-react";
 
 const cx = (...a) => a.filter(Boolean).join(" ");
@@ -38,7 +38,7 @@ const colorMap = {
   }
 };
 
-export default function ConfirmModal({
+const ConfirmModal = memo(function ConfirmModal({
   open,
   onClose,
   onConfirm,
@@ -142,7 +142,9 @@ export default function ConfirmModal({
       </div>
     </div>
   );
-}
+});
+
+export default ConfirmModal;
 
 // Hook for easier usage
 export function useConfirmModal() {

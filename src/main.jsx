@@ -10,10 +10,12 @@ import ProfileProvider from "./profile/ProfileProvider.jsx";
 import { OrganizationProvider } from "./organizations/OrganizationProvider.jsx";
 import { ViewProvider } from "./contexts/ViewContext.jsx";
 
-// Lazy load ShareViewer for /s/:token
+// Lazy load ShareViewer for /s/:token and DeliveryPage for /delivery/:deckId
 const ShareViewer = React.lazy(() => import("./share/ShareViewer.jsx"));
+const DeliveryPage = React.lazy(() => import("./delivery/DeliveryPage.jsx"));
 
 import { supabase } from "./lib/supabaseClient";
+import { ToastProvider } from "./components/Toast.jsx";
 if (import.meta.env.DEV) window.supabase = supabase;
 
 // Simple client router: handles /s/:token and default app
@@ -31,11 +33,16 @@ const useRoute = () => {
     return match ? decodeURIComponent(match[1]) : null;
   }, [path]);
 
-  return { shareToken };
+  const deliveryToken = useMemo(() => {
+    const match = path.match(/^\/delivery\/([^/]+)\/?$/);
+    return match ? decodeURIComponent(match[1]) : null;
+  }, [path]);
+
+  return { shareToken, deliveryToken };
 };
 
 function Router() {
-  const { shareToken } = useRoute();
+  const { shareToken, deliveryToken } = useRoute();
 
   if (shareToken) {
     return (
@@ -45,18 +52,28 @@ function Router() {
     );
   }
 
+  if (deliveryToken) {
+    return (
+      <Suspense fallback={<div className="p-6 text-sm text-app-muted">Loading delivery page…</div>}>
+        <DeliveryPage />
+      </Suspense>
+    );
+  }
+
   return (
-    <AuthProvider>
-      <ProfileProvider>
-        <OrganizationProvider>
-          <ViewProvider>
-            <AuthGate>
-              <App />
-            </AuthGate>
-          </ViewProvider>
-        </OrganizationProvider>
-      </ProfileProvider>
-    </AuthProvider>
+    <ToastProvider>
+      <AuthProvider>
+        <ProfileProvider>
+          <OrganizationProvider>
+            <ViewProvider>
+              <AuthGate>
+                <App />
+              </AuthGate>
+            </ViewProvider>
+          </OrganizationProvider>
+        </ProfileProvider>
+      </AuthProvider>
+    </ToastProvider>
   );
 }
 

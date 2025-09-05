@@ -93,6 +93,60 @@ export function useExportStability() {
     setIsExporting(true);
     
     try {
+      // Handle carousel posts (multiple images)
+      if (post.type === "carousel" && post.media && post.media.length > 1) {
+        console.log("📁 Exporting carousel with", post.media.length, "images");
+        
+        // Download all images in the carousel
+        for (let i = 0; i < post.media.length; i++) {
+          const mediaUrl = post.media[i];
+          const carouselFilename = filename 
+            ? filename.replace(/\.(jpg|jpeg|png)$/i, `-${i + 1}.$1`)
+            : `${post.platform}-carousel-${i + 1}-${Date.now()}.jpg`;
+          
+          // Determine target aspect ratio for cropping
+          let targetAspectRatio = null;
+          if (post.isReel || post.type === "reel") {
+            targetAspectRatio = 9/16; // Reels are always vertical
+          } else if (post.platform === "instagram") {
+            // Instagram: use igAdFormat or default to square
+            const format = post.igAdFormat || "feed-1:1";
+            const ratio = format.split('-')[1] || "1:1";
+            targetAspectRatio = getAspectRatioValue(ratio);
+          } else {
+            // Facebook: use fbAspectRatio
+            const ratio = post.fbAspectRatio || "1:1";
+            targetAspectRatio = getAspectRatioValue(ratio);
+          }
+          
+          // Crop and download each image
+          const croppedBlob = await cropImageToAspectRatio(mediaUrl, targetAspectRatio);
+          const blobUrl = URL.createObjectURL(croppedBlob);
+          
+          const link = document.createElement("a");
+          link.href = blobUrl;
+          link.download = carouselFilename;
+          link.style.display = 'none';
+          
+          document.body.appendChild(link);
+          link.click();
+          
+          setTimeout(() => {
+            document.body.removeChild(link);
+            URL.revokeObjectURL(blobUrl);
+          }, 100);
+          
+          // Small delay between downloads to prevent overwhelming the browser
+          if (i < post.media.length - 1) {
+            await new Promise(resolve => setTimeout(resolve, 300));
+          }
+        }
+        
+        console.log("📁 Carousel export successful - downloaded", post.media.length, "images");
+        return true;
+      }
+      
+      // Handle single media (image or video)
       let mediaUrl = null;
       let defaultFilename = `media-${Date.now()}`;
       let shouldCrop = false;
@@ -130,7 +184,7 @@ export function useExportStability() {
         throw new Error("No media to export");
       }
       
-      console.log("📁 Processing media:", { 
+      console.log("📁 Processing single media:", { 
         url: mediaUrl.substring(0, 50) + '...', 
         shouldCrop, 
         targetAspectRatio,

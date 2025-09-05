@@ -1,12 +1,13 @@
 // src/components/TopBar.jsx
 import React, { memo } from "react";
-import { Menu } from "lucide-react";
+import { Menu, Search } from "lucide-react";
 import ProfileButton from "../profile/ProfileButton";
 import { useProfile } from "../profile/ProfileProvider";
 import InvitationNotifications from "../organizations/InvitationNotifications";
 
 const TopBar = memo(function TopBar({
   onOpenMenu = () => {},
+  onOpenGlobalSearch = () => {},
   user = null,
 }) {
   const { profile } = useProfile();
@@ -50,6 +51,15 @@ const TopBar = memo(function TopBar({
 
         {/* Right cluster */}
         <div className="flex items-center gap-2">
+          {/* Global Search Button */}
+          <button
+            onClick={onOpenGlobalSearch}
+            className="p-2 rounded-lg hover:bg-gray-100 transition-colors group relative"
+            title="Search everything (⌘K)"
+          >
+            <Search className="w-4 h-4 text-gray-600 group-hover:text-gray-900" />
+          </button>
+          
           <InvitationNotifications />
           <ProfileButton />
         </div>

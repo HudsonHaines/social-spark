@@ -291,7 +291,6 @@ const LeftPanel = memo(function LeftPanel(props) {
         verified: !!row.verified,
       };
       onSetDeckBrand(deckBrandFormat, false); // Don't apply to existing posts, just set for new ones
-      console.log('✅ Set deck brand from left panel:', deckBrandFormat.name);
     }
   }, [brandRows, syncPostBrandFromRow, showDeckStrip, onSetDeckBrand, post.platform]);
 

@@ -8,7 +8,11 @@ import {
   deleteDeckItem,
   deleteDeckItems,
   renameDeck,
+  updateDeckApproval,
   getOrCreateDeckShare,
+  getOrCreateDeliveryLink,
+  getExistingDeliveryLink,
+  getExistingDeckShare,
 } from "../data/decks";
 import { ensurePostShape } from "../data/postShape";
 import {
@@ -30,6 +34,8 @@ import {
 import PostPreviewModal from "./PostPreviewModal";
 import { getVideoThumbnail, canPlayVideo } from "../data/videoUtils";
 import { useConfirmModal } from "../components/ConfirmModal";
+import { useToast } from "../components/Toast";
+import { SkeletonDeckItem, SkeletonPostCard } from "../components/Skeleton";
 
 const cx = (...a) => a.filter(Boolean).join(" ");
 
@@ -49,7 +55,8 @@ export default function DecksPage({
     loading: {
       decks: true,
       items: false,
-      operations: new Set()
+      operations: new Set(),
+      approvingDeck: false
     },
     error: null
   });
@@ -73,11 +80,18 @@ export default function DecksPage({
   // Deck rename state
   const [renamingDeckId, setRenamingDeckId] = useState(null);
   const [newDeckName, setNewDeckName] = useState('');
+  
+  // Delivery links state - track for each approved deck
+  const [deckDeliveryLinks, setDeckDeliveryLinks] = useState({});
+  
+  // Client share links state - track for all decks
+  const [deckShareLinks, setDeckShareLinks] = useState({});
 
   const { decks, items, activeId, loading } = state;
 
   // Modal hook for replacing Chrome alerts/confirms
   const { confirm, alert, ConfirmModal } = useConfirmModal();
+  const { toast } = useToast();
 
   const activeDeck = useMemo(
     () => decks.find((d) => String(d.id) === activeId) || null,
@@ -110,6 +124,12 @@ export default function DecksPage({
           loading: { ...prev.loading, decks: false },
           error: null
         }));
+        
+        // Load existing delivery links for approved decks
+        loadDeliveryLinksForApprovedDecks(rows);
+        
+        // Load existing share links for all decks
+        loadShareLinksForDecks(rows);
       } catch (error) {
         console.error('Load decks error:', error);
         if (mounted) {
@@ -125,6 +145,53 @@ export default function DecksPage({
     loadDecks();
     return () => { mounted = false; };
   }, [userId, refreshTrigger]);
+  
+  // Function to load existing delivery links for approved decks
+  const loadDeliveryLinksForApprovedDecks = async (decksToCheck) => {
+    const approvedDecks = decksToCheck.filter(deck => deck.approved);
+    const linkPromises = approvedDecks.map(async (deck) => {
+      try {
+        const existingLink = await getExistingDeliveryLink(deck.id);
+        return { deckId: deck.id, link: existingLink };
+      } catch (error) {
+        console.error('Failed to load delivery link for deck', deck.id, error);
+        return { deckId: deck.id, link: null };
+      }
+    });
+    
+    const results = await Promise.all(linkPromises);
+    const linksMap = {};
+    results.forEach(({ deckId, link }) => {
+      if (link && link.token) {
+        linksMap[deckId] = link.token;
+      }
+    });
+    
+    setDeckDeliveryLinks(linksMap);
+  };
+  
+  // Function to load existing share links for all decks
+  const loadShareLinksForDecks = async (decksToCheck) => {
+    const linkPromises = decksToCheck.map(async (deck) => {
+      try {
+        const existingLink = await getExistingDeckShare(deck.id);
+        return { deckId: deck.id, link: existingLink };
+      } catch (error) {
+        console.error('Failed to load share link for deck', deck.id, error);
+        return { deckId: deck.id, link: null };
+      }
+    });
+    
+    const results = await Promise.all(linkPromises);
+    const linksMap = {};
+    results.forEach(({ deckId, link }) => {
+      if (link && link.token) {
+        linksMap[deckId] = link.token;
+      }
+    });
+    
+    setDeckShareLinks(linksMap);
+  };
 
   // Load items effect
   useEffect(() => {
@@ -192,12 +259,7 @@ export default function DecksPage({
       }));
     } catch (error) {
       console.error('Add current error:', error);
-      await alert({
-        title: "Error",
-        message: "Could not add post. Please try again.",
-        type: "error",
-        confirmText: "OK"
-      });
+      toast.error("Could not add post. Please try again.");
     } finally {
       setState(prev => {
         const newOps = new Set(prev.loading.operations);
@@ -256,20 +318,10 @@ export default function DecksPage({
       }));
       setSelectedItems(new Set());
       
-      await alert({
-        title: "Posts Deleted",
-        message: `Successfully deleted ${selectedItems.size} post(s).`,
-        type: "success",
-        confirmText: "OK"
-      });
+      toast.success(`Successfully deleted ${selectedItems.size} post(s).`);
     } catch (err) {
       console.error('Failed to bulk delete:', err);
-      await alert({
-        title: "Error",
-        message: `Failed to delete posts: ${err.message}`,
-        type: "error",
-        confirmText: "OK"
-      });
+      toast.error(`Failed to delete posts: ${err.message}`);
     } finally {
       setBulkUpdating(false);
     }
@@ -301,12 +353,7 @@ export default function DecksPage({
       setNewDeckName('');
     } catch (err) {
       console.error('Failed to rename deck:', err);
-      await alert({
-        title: "Error",
-        message: `Failed to rename deck: ${err.message}`,
-        type: "error",
-        confirmText: "OK"
-      });
+      toast.error(`Failed to rename deck: ${err.message}`);
     }
   }, [renamingDeckId, newDeckName, userId]);
 
@@ -363,20 +410,10 @@ export default function DecksPage({
       }));
       setSelectedDecks(new Set());
       
-      await alert({
-        title: "Decks Deleted",
-        message: `Successfully deleted ${selectedDecks.size} deck(s).`,
-        type: "success",
-        confirmText: "OK"
-      });
+      toast.success(`Successfully deleted ${selectedDecks.size} deck(s).`);
     } catch (err) {
       console.error('Failed to bulk delete decks:', err);
-      await alert({
-        title: "Error",
-        message: `Failed to delete decks: ${err.message}`,
-        type: "error",
-        confirmText: "OK"
-      });
+      toast.error(`Failed to delete decks: ${err.message}`);
     } finally {
       setBulkDeckUpdating(false);
     }
@@ -405,20 +442,10 @@ export default function DecksPage({
         items: rows.length ? prev.items : []
       }));
       
-      await alert({
-        title: "Deck Deleted",
-        message: "The deck has been successfully deleted.",
-        type: "success",
-        confirmText: "OK"
-      });
+      toast.success("The deck has been successfully deleted.");
     } catch (e) {
       console.error(e);
-      await alert({
-        title: "Error",
-        message: "Could not delete deck. Please try again.",
-        type: "error",
-        confirmText: "OK"
-      });
+      toast.error("Could not delete deck. Please try again.");
     }
   }
 
@@ -430,12 +457,7 @@ export default function DecksPage({
       setItems(rows);
     } catch (e) {
       console.error(e);
-      await alert({
-        title: "Error",
-        message: "Could not delete post. Please try again.",
-        type: "error",
-        confirmText: "OK"
-      });
+      toast.error("Could not delete post. Please try again.");
     }
   }
 
@@ -446,20 +468,161 @@ export default function DecksPage({
       const token = await getOrCreateDeckShare(activeDeck.id, { days: 7 });
       const url = `${window.location.origin}/s/${encodeURIComponent(token)}`;
       
+      // Update the share links state
+      setDeckShareLinks(prev => ({
+        ...prev,
+        [activeDeck.id]: token
+      }));
+      
       setShareUrl(url);
       setShareModalOpen(true);
       
-      console.log("Share link retrieved/created:", url);
     } catch (e) {
       console.error("Share link error:", e);
-      await alert({
-        title: "Error",
-        message: `Could not get share link. Error: ${e.message}`,
-        type: "error",
-        confirmText: "OK"
-      });
+      toast.error("Failed to get share link");
     }
   }
+
+  // Handle approval toggle
+  const handleApprovalToggle = useCallback(async () => {
+    if (!activeDeck) return;
+    
+    try {
+      setState(prev => {
+        return {
+          ...prev,
+          loading: { ...prev.loading, approvingDeck: true }
+        };
+      });
+
+      const newApprovalStatus = !activeDeck.approved;
+      const updatedDeck = await updateDeckApproval(activeDeck.id, newApprovalStatus);
+      
+      // Update the deck in state
+      setState(prev => ({
+        ...prev,
+        decks: prev.decks.map(deck => 
+          deck.id === activeDeck.id ? updatedDeck : deck
+        ),
+        loading: { ...prev.loading, approvingDeck: false }
+      }));
+      
+      // If deck was approved, load its delivery link
+      if (newApprovalStatus) {
+        loadDeliveryLinksForApprovedDecks([updatedDeck]);
+      } else {
+        // If approval removed, clear the delivery link from state
+        setDeckDeliveryLinks(prev => {
+          const newLinks = { ...prev };
+          delete newLinks[activeDeck.id];
+          return newLinks;
+        });
+      }
+
+      // Show success message
+      const message = newApprovalStatus 
+        ? "Deck approved for delivery!"
+        : "Deck approval removed";
+      toast.success(message);
+      
+    } catch (e) {
+      console.error("Approval update error:", e);
+      toast.error("Failed to update approval status");
+      setState(prev => ({
+        ...prev,
+        loading: { ...prev.loading, approvingDeck: false }
+      }));
+    }
+  }, [activeDeck, alert]);
+
+  // Handle delivery link generation (persistent)
+  const handleCreateDeliveryLink = useCallback(async () => {
+    if (!activeDeck) return;
+    
+    try {
+      setState(prev => ({
+        ...prev,
+        loading: { ...prev.loading, creatingDeliveryLink: true }
+      }));
+
+      // Get or create persistent delivery link
+      const token = await getOrCreateDeliveryLink(activeDeck.id, { days: 365 }); // 1 year expiry
+      const deliveryUrl = `${window.location.origin}/delivery/${token}`;
+      
+      // Update the delivery links state
+      setDeckDeliveryLinks(prev => ({
+        ...prev,
+        [activeDeck.id]: token
+      }));
+      
+      // Copy to clipboard automatically
+      if (navigator.clipboard && window.isSecureContext) {
+        await navigator.clipboard.writeText(deliveryUrl);
+        toast.success("Delivery link copied to clipboard!", {
+          title: "Delivery Link Ready",
+          duration: 6000
+        });
+      } else {
+        toast.info(`Share this link with your social media manager: ${deliveryUrl}`, {
+          title: "Delivery Link",
+          duration: 8000
+        });
+      }
+      
+    } catch (e) {
+      console.error("Delivery link error:", e);
+      toast.error("Failed to create delivery link");
+    } finally {
+      setState(prev => ({
+        ...prev,
+        loading: { ...prev.loading, creatingDeliveryLink: false }
+      }));
+    }
+  }, [activeDeck, alert]);
+  
+  // Copy delivery link to clipboard
+  const handleCopyDeliveryLink = useCallback(async (deckId, event) => {
+    event.stopPropagation();
+    const token = deckDeliveryLinks[deckId];
+    if (!token) return;
+    
+    const deliveryUrl = `${window.location.origin}/delivery/${token}`;
+    
+    try {
+      if (navigator.clipboard && window.isSecureContext) {
+        await navigator.clipboard.writeText(deliveryUrl);
+        toast.success("Delivery link copied to clipboard!");
+      } else {
+        toast.info(`Copy this delivery link: ${deliveryUrl}`, {
+          duration: 6000
+        });
+      }
+    } catch (err) {
+      console.error('Failed to copy delivery link:', err);
+    }
+  }, [deckDeliveryLinks, alert]);
+  
+  // Copy client share link to clipboard
+  const handleCopyShareLink = useCallback(async (deckId, event) => {
+    event.stopPropagation();
+    const token = deckShareLinks[deckId];
+    if (!token) return;
+    
+    const shareUrl = `${window.location.origin}/s/${encodeURIComponent(token)}`;
+    
+    try {
+      if (navigator.clipboard && window.isSecureContext) {
+        await navigator.clipboard.writeText(shareUrl);
+        toast.success("Client share link copied to clipboard!");
+      } else {
+        toast.info(`Copy this share link: ${shareUrl}`, {
+          duration: 6000
+        });
+      }
+    } catch (err) {
+      console.error('Failed to copy share link:', err);
+    }
+  }, [deckShareLinks, alert]);
 
   function openPreview(pj, deckId, itemId, deckTitle) {
     setPreviewPost(ensurePostShape(pj || {}));
@@ -477,8 +640,65 @@ export default function DecksPage({
           </button>
           <div className="font-medium text-app-strong">Manage decks</div>
         </div>
-        <div className="flex-1"></div>
+        <div className="flex-1">
+          {/* Approval Status Indicator */}
+          {activeDeck && (
+            <div className="inline-flex items-center gap-2">
+              <span className={cx(
+                "inline-flex items-center px-2 py-1 rounded-full text-xs font-medium",
+                activeDeck.approved 
+                  ? "bg-green-100 text-green-800"
+                  : "bg-gray-100 text-gray-600"
+              )}>
+                {activeDeck.approved ? (
+                  <>
+                    <Check className="w-3 h-3 mr-1" />
+                    Approved
+                  </>
+                ) : (
+                  "Draft"
+                )}
+              </span>
+            </div>
+          )}
+        </div>
         <div className="flex items-center gap-2">
+          {/* Approval Toggle */}
+          {activeDeck && (
+            <button
+              className={cx(
+                "btn-outline",
+                activeDeck.approved 
+                  ? "border-red-200 text-red-700 hover:bg-red-50"
+                  : "border-green-200 text-green-700 hover:bg-green-50"
+              )}
+              onClick={handleApprovalToggle}
+              disabled={state.loading.approvingDeck}
+              title={activeDeck.approved ? "Remove approval" : "Mark as approved"}
+            >
+              {state.loading.approvingDeck ? (
+                <RefreshCw className="w-4 h-4 mr-1 animate-spin" />
+              ) : activeDeck.approved ? (
+                <X className="w-4 h-4 mr-1" />
+              ) : (
+                <Check className="w-4 h-4 mr-1" />
+              )}
+              {activeDeck.approved ? "Remove Approval" : "Mark Approved"}
+            </button>
+          )}
+          
+          {/* Delivery Link - Only show for approved decks */}
+          {activeDeck?.approved && (
+            <button
+              className="btn-outline"
+              onClick={handleCreateDeliveryLink}
+              title="Generate delivery link for social media manager"
+            >
+              <LinkIcon className="w-4 h-4 mr-1" />
+              Create Delivery Link
+            </button>
+          )}
+          
           <button
             className="btn-outline"
             disabled={!activeDeck}
@@ -566,7 +786,11 @@ export default function DecksPage({
             
             <div className="max-h-[60vh] overflow-auto">
               {loading.decks ? (
-                <div className="p-3 text-sm text-app-muted">Loading...</div>
+                <div>
+                  {Array.from({ length: 4 }, (_, i) => (
+                    <SkeletonDeckItem key={i} />
+                  ))}
+                </div>
               ) : decks.length === 0 ? (
                 <div className="p-3 text-sm text-app-muted">No decks yet</div>
               ) : (
@@ -652,9 +876,42 @@ export default function DecksPage({
                               ) : (
                                 <div className="group flex items-center gap-2">
                                   <div className="min-w-0 flex-1">
-                                    <div className="font-medium truncate">{d.title}</div>
+                                    <div className="flex items-center gap-2">
+                                      <div className="font-medium truncate">{d.title}</div>
+                                      {d.approved && (
+                                        <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                                          <Check className="w-2.5 h-2.5 mr-1" />
+                                          Approved
+                                        </span>
+                                      )}
+                                    </div>
                                     <div className="text-app-muted text-xs">
                                       {new Date(d.created_at).toLocaleString()}
+                                    </div>
+                                    {/* Show links if they exist */}
+                                    <div className="mt-1 flex flex-wrap gap-2">
+                                      {/* Client share link */}
+                                      {deckShareLinks[d.id] && (
+                                        <button
+                                          onClick={(e) => handleCopyShareLink(d.id, e)}
+                                          className="inline-flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800 hover:underline"
+                                          title="Copy client share link"
+                                        >
+                                          <LinkIcon className="w-3 h-3" />
+                                          Client Link
+                                        </button>
+                                      )}
+                                      {/* Delivery link for approved decks */}
+                                      {d.approved && deckDeliveryLinks[d.id] && (
+                                        <button
+                                          onClick={(e) => handleCopyDeliveryLink(d.id, e)}
+                                          className="inline-flex items-center gap-1 text-xs text-green-600 hover:text-green-800 hover:underline"
+                                          title="Copy delivery link"
+                                        >
+                                          <LinkIcon className="w-3 h-3" />
+                                          Delivery Link
+                                        </button>
+                                      )}
                                     </div>
                                   </div>
                                   <button
@@ -688,7 +945,11 @@ export default function DecksPage({
             </div>
 
             {loading.items ? (
-              <div className="p-4 text-sm text-app-muted">Loading...</div>
+              <div className="p-3 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                {Array.from({ length: 6 }, (_, i) => (
+                  <SkeletonPostCard key={i} />
+                ))}
+              </div>
             ) : !activeDeck ? (
               <div className="p-4 text-sm text-app-muted">Pick a deck</div>
             ) : items.length === 0 ? (

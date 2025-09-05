@@ -6,6 +6,8 @@ import React, {
   useCallback,
   useEffect,
   Fragment,
+  Suspense,
+  lazy,
 } from "react";
 import AppShell from "./components/AppShell";
 import LeftPanel from "./components/LeftPanel";
@@ -13,12 +15,15 @@ import RightPreview from "./components/RightPreview";
 import MenuDrawer from "./components/MenuDrawer";
 import DeckStrip from "./components/DeckStrip";
 import DeckPickerV3 from "./decks/DeckPickerV3";
+import GlobalSearch from "./components/GlobalSearch";
 import { useConfirmModal } from "./components/ConfirmModal";
 import { useToast } from "./components/Toast";
-import DecksPage from "./decks/DecksPage";
-import BrandsPage from "./brands/BrandsPage";
-import ShareLinksPage from "./share/ShareLinksPage";
-import EditorPresentMode from "./components/EditorPresentMode";
+
+// Lazy load heavy page components
+const DecksPage = lazy(() => import("./decks/DecksPage"));
+const BrandsPage = lazy(() => import("./brands/BrandsPage"));
+const ShareLinksPage = lazy(() => import("./share/ShareLinksPage"));
+const EditorPresentMode = lazy(() => import("./components/EditorPresentMode"));
 
 import { emptyPost, ensurePostShape } from "./data/postShape";
 import { useExportStability } from "./hooks/useExportStability"; // FIXED: Use the hook
@@ -106,10 +111,13 @@ export default function App() {
   const [uiState, setUiState] = useState({
     menuOpen: false,
     brandManagerOpen: false,
+    globalSearchOpen: false,
     deckManagerOpen: false,
     deckPickerOpen: false,
     internalCheckerOpen: false,
     checkerPosts: [],
+    deckSaveConfirmOpen: false,
+    savedDeckInfo: null,
   });
   
   // Track if we're editing from a deck
@@ -127,7 +135,9 @@ export default function App() {
   const { ConfirmModal, alert, confirm } = useConfirmModal();
   
   // Toast notifications
-  const { success: showSuccessToast, error: showErrorToast, ToastContainer } = useToast();
+  const { toast } = useToast();
+  const showSuccessToast = toast.success;
+  const showErrorToast = toast.error;
 
   // refs
   const previewRef = useRef(null);
@@ -311,7 +321,6 @@ export default function App() {
       
       // Process video if present to extract thumbnail
       if (processedPost.videoSrc && processedPost.videoSrc.startsWith('data:video/')) {
-        console.log('🎬 Processing video for local deck...');
         try {
           const videoData = await processVideoForDeck(processedPost.videoSrc);
           processedPost = {
@@ -319,7 +328,6 @@ export default function App() {
             videoThumbnail: videoData.thumbnail,
             videoMetadata: videoData.metadata
           };
-          console.log('✅ Video processed for local deck, thumbnail extracted');
         } catch (error) {
           console.error('❌ Failed to process video for local deck:', error);
           // Continue without thumbnail - will use placeholder
@@ -350,7 +358,6 @@ export default function App() {
           };
           return newDeck;
         });
-        console.log('✅ Updated existing deck item');
         return;
       }
       
@@ -362,7 +369,6 @@ export default function App() {
         post: { ...processedPost, id: newItemId },
       };
       setLocalDeck((d) => [item, ...d]);
-      console.log('✅ Created new deck item with ID:', newItemId);
     },
     [post, localDeck]
   );
@@ -394,13 +400,12 @@ export default function App() {
       post: emptyPostWithId,
     };
     
-    setLocalDeck((d) => [item, ...d]);
+    setLocalDeck((d) => [...d, item]);
     
     // Load this new empty post for editing
     setPost(emptyPostWithId);
     resetPostHistory(emptyPostWithId);
     
-    console.log('✅ Created new empty deck item for editing with ID:', newItemId, 'with inherited brand:', inheritedBrand?.name, 'platform:', post.platform);
   }, [post, deckBrand, setPost, resetPostHistory]);
 
   // Set deck brand and optionally apply to all existing posts
@@ -421,10 +426,7 @@ export default function App() {
         updatePost(prev => ({ ...prev, brand: brand }));
       }
       
-      console.log('✅ Applied brand to all', localDeck.length, 'existing deck posts:', brand?.name);
     }
-    
-    console.log('✅ Set deck brand:', brand?.name);
   }, [localDeck, post.id, updatePost]);
 
   // Legacy function for backward compatibility
@@ -493,11 +495,7 @@ export default function App() {
       
       // If we're editing a deck from the deck strip, just update the local deck and save it
       if (editingFromDeck.deckId && localDeck.length > 0) {
-        console.log("📝 Updating current post in local deck and saving entire deck");
-        
         // Find and update the current post in the local deck
-        console.log('🔍 Looking for post to update in local deck. Current post:', post);
-        console.log('🔍 Local deck items:', localDeck.map(item => ({ id: item.id, post: item.post })));
         
         let foundMatch = false;
         const updatedLocalDeck = localDeck.map((item, index) => {
@@ -507,22 +505,9 @@ export default function App() {
           const isIdMatch = item.deckItemId === editingFromDeck.itemId;
           const isCaptionMatch = item.post.caption === post.caption; // Use caption instead of text
           
-          console.log(`🔍 Item ${index}:`, {
-            itemId: item.id,
-            deckItemId: item.deckItemId,
-            editingItemId: editingFromDeck.itemId,
-            itemCaption: item.post.caption?.substring(0, 50) + '...',
-            currentCaption: post.caption?.substring(0, 50) + '...',
-            isExactMatch,
-            isJsonMatch,
-            isIdMatch,
-            isCaptionMatch
-          });
-          
           // Update if we find a match by ID, but only if the content also matches
           // This prevents updating the wrong item if IDs are stale
           if (isIdMatch && (isJsonMatch || isCaptionMatch)) {
-            console.log('✅ Found match by ID + content! Updating item:', item.id);
             foundMatch = true;
             return {
               ...item,
@@ -536,7 +521,6 @@ export default function App() {
           
           // Fallback: if no ID match but content matches, update this item
           if (isJsonMatch || isCaptionMatch) {
-            console.log('✅ Found match by content! Updating item:', item.id);
             foundMatch = true;
             return {
               ...item,
@@ -574,7 +558,6 @@ export default function App() {
             if (item.post.platform === post.platform) score += 1;
             if (item.post.type === post.type) score += 1;
             
-            console.log(`🔍 Item ${index} similarity score:`, score);
             
             if (score > bestMatchScore) {
               bestMatchScore = score;
@@ -582,7 +565,6 @@ export default function App() {
             }
           });
           
-          console.log('✅ Using best match (index', bestMatchIndex, ') with score:', bestMatchScore);
           updatedLocalDeck[bestMatchIndex] = {
             ...updatedLocalDeck[bestMatchIndex],
             post: {
@@ -593,14 +575,12 @@ export default function App() {
           };
         }
         
-        console.log('🔄 Updated local deck:', updatedLocalDeck.map(item => ({ id: item.id, caption: item.post.caption })));
         
         setLocalDeck(updatedLocalDeck);
         
         // Save the entire updated deck
         try {
           const deckName = editingFromDeck.deckTitle || 'Updated Deck';
-          console.log("💾 Saving updated deck:", deckName);
           
           // Use the existing deck save logic by calling the DeckStrip's onSaveDeck
           // First update the local deck state
@@ -618,7 +598,6 @@ export default function App() {
                 
                 if (isEditingExistingDeck && currentDeckTitle) {
                   // Updating existing deck - delete old items and save new ones
-                  console.log('Updating existing deck:', editingFromDeck.deckId);
                   
                   // Delete existing items
                   const existingItems = await listDeckItems(editingFromDeck.deckId);
@@ -630,15 +609,12 @@ export default function App() {
                   // Save new items with media upload
                   for (let i = 0; i < updatedLocalDeck.length; i++) {
                     const item = updatedLocalDeck[i];
-                    console.log(`Processing item ${i + 1}/${updatedLocalDeck.length}...`);
                     
                     // Upload media files if needed
-                    console.log('Uploading media for item', i + 1, '...');
                     let postWithUploadedMedia = await uploadPostMedia(item.post, authenticatedUserId);
                     
                     // Process video if needed
                     if (postWithUploadedMedia.videoSrc && postWithUploadedMedia.videoSrc.startsWith('data:video/')) {
-                      console.log('🎬 Processing video for deck item...');
                       try {
                         const videoData = await processVideoForDeck(postWithUploadedMedia.videoSrc);
                         postWithUploadedMedia = {
@@ -647,7 +623,6 @@ export default function App() {
                           videoMetadata: videoData.metadata,
                           videoSrc: videoData.videoSrc // Use processed video src
                         };
-                        console.log('🎥 Video processed successfully');
                       } catch (videoError) {
                         console.error('Video processing failed:', videoError);
                         // Continue anyway - video will remain as data URL
@@ -656,14 +631,11 @@ export default function App() {
                     
                     // Add to deck
                     await addItemToDeck(editingFromDeck.deckId, postWithUploadedMedia, i);
-                    console.log(`✅ Item ${i + 1} saved successfully`);
                   }
                   
-                  console.log('🎉 All items saved successfully!');
                   
                   // Verify the save worked
                   const verifyItems = await listDeckItems(editingFromDeck.deckId);
-                  console.log('✅ Verification: Deck now has', verifyItems.length, 'items in database');
                   
                   resolve();
                 } else {
@@ -703,8 +675,6 @@ export default function App() {
         const postJson = ensurePostShape(post);
         
         // Upload media files before saving
-        console.log("Uploading media files for update...");
-        console.log("📝 Updating item:", editingFromDeck.itemId, "with post:", postJson);
         const postWithUploadedMedia = await uploadPostMedia(postJson, authenticatedUserId);
         
         // Update the deck item with version tracking
@@ -835,7 +805,6 @@ export default function App() {
         const postJson = ensurePostShape(post);
         
         // Upload media files before saving
-        console.log("Uploading media files...");
         const postWithUploadedMedia = await uploadPostMedia(postJson, authenticatedUserId);
         
         await addItemToDeck(targetDeckId, postWithUploadedMedia);
@@ -866,7 +835,6 @@ export default function App() {
         if (!authenticatedUserId) return;
         
         // Upload media files before saving
-        console.log("Uploading media files...");
         const postWithUploadedMedia = await uploadPostMedia(postJson, authenticatedUserId);
         
         await addItemToDeck(pickedId, postWithUploadedMedia);
@@ -882,14 +850,6 @@ export default function App() {
 
   // Export handler
   const handleExportPNG = useCallback(async () => {
-    console.log("🖼️ Export PNG clicked", { 
-      previewRefExists: !!previewRef.current,
-      exportFnExists: !!previewRef.current?.exportAsPng,
-      previewRefKeys: previewRef.current ? Object.keys(previewRef.current) : 'no ref',
-      previewRefValues: previewRef.current,
-      isDOM: previewRef.current instanceof HTMLElement,
-      previewRefType: typeof previewRef.current
-    });
     
     if (!previewRef.current?.exportAsPng) {
       console.error("Export function not available");
@@ -898,18 +858,97 @@ export default function App() {
     }
     
     setIsExporting(true);
-    console.log("🖼️ Starting PNG export...");
     try {
       const result = await previewRef.current.exportAsPng();
-      console.log("🖼️ Export completed successfully:", result);
     } catch (err) {
       console.error("PNG export failed:", err);
       alert("PNG export failed. Check console for details.");
     } finally {
       setIsExporting(false);
-      console.log("🖼️ Export process finished");
     }
   }, []);
+
+  // Global Search Handlers
+  const openGlobalSearch = useCallback(() => {
+    setUiState(prev => ({ ...prev, globalSearchOpen: true }));
+  }, []);
+
+  const closeGlobalSearch = useCallback(() => {
+    setUiState(prev => ({ ...prev, globalSearchOpen: false }));
+  }, []);
+
+  const handleNavigateToDeck = useCallback((deck) => {
+    navigateToPage("decks");
+    closeGlobalSearch();
+  }, []);
+
+  const handleLoadPostFromSearch = useCallback(async (post, deckId, itemId, deckTitle) => {
+    try {
+      // Load the entire deck into the strip
+      const deckItems = await listDeckItems(deckId);
+      
+      // Convert deck items to local deck format
+      const localDeckItems = deckItems.map(item => ({
+        id: item.id,
+        post: ensurePostShape(item.post_json),
+        deckItemId: item.id
+      }));
+      
+      // Set the deck in local state and show the strip
+      setLocalDeck(localDeckItems);
+      setShowDeckStrip(true);
+      
+      // Set the clicked post as current
+      const normalizedPost = ensurePostShape(post);
+      const matchingDeckItem = localDeckItems.find(item => item.deckItemId === itemId);
+      if (matchingDeckItem) {
+        const postWithId = { ...matchingDeckItem.post, id: matchingDeckItem.id };
+        setPost(postWithId);
+        resetPostHistory(postWithId);
+      } else {
+        setPost(normalizedPost);
+        resetPostHistory(normalizedPost);
+      }
+      
+      // Track that we're editing from a deck
+      setEditingFromDeck({
+        deckId: deckId,
+        itemId: itemId,
+        version: (post.version || 1),
+        deckTitle: deckTitle || 'Untitled Deck'
+      });
+      
+      navigateToPage("editor");
+      closeGlobalSearch();
+    } catch (error) {
+      console.error('Failed to load post from search:', error);
+      showErrorToast('Failed to load post');
+    }
+  }, [resetPostHistory]);
+
+  const handleNavigateToBrandsFromSearch = useCallback((brand) => {
+    navigateToPage("brands");
+    closeGlobalSearch();
+  }, []);
+
+  // Global keyboard shortcuts
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      // Cmd+K or Ctrl+K to open global search
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+        e.preventDefault();
+        openGlobalSearch();
+      }
+      
+      // Escape to close global search
+      if (e.key === 'Escape' && uiState.globalSearchOpen) {
+        closeGlobalSearch();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [uiState.globalSearchOpen, openGlobalSearch, closeGlobalSearch]);
 
 
   return (
@@ -920,6 +959,7 @@ export default function App() {
         topBarProps={{
           user: authenticatedUser,
           onOpenMenu: () => setUiState(prev => ({ ...prev, menuOpen: true })),
+          onOpenGlobalSearch: openGlobalSearch,
         }}
         deckStripProps={{
           deck: localDeck,
@@ -952,15 +992,6 @@ export default function App() {
             const authenticatedUserId = await ensureAuthenticated();
             if (!authenticatedUserId) return;
             
-            console.log('Starting deck save:', { 
-              deckName, 
-              userId: authenticatedUserId, 
-              itemCount: localDeck.length,
-              isEditing: !!editingFromDeck.deckId,
-              editingDeckId: editingFromDeck.deckId,
-              editingDeckTitle: editingFromDeck.deckTitle
-            });
-            
             try {
               // Validate deck name
               if (!deckName?.trim()) {
@@ -974,7 +1005,6 @@ export default function App() {
 
               // Create new deck
               // Check storage setup first (but don't block save if check fails)
-              console.log('Checking storage configuration...');
               try {
                 const storageCheck = await checkStorageSetup();
                 if (!storageCheck.exists) {
@@ -989,7 +1019,6 @@ export default function App() {
               
               // Check if we're editing an existing deck
               if (editingFromDeck.deckId) {
-                console.log('Updating existing deck:', editingFromDeck.deckId);
                 
                 // Update the deck title
                 await renameDeck(editingFromDeck.deckId, deckName.trim());
@@ -1003,28 +1032,23 @@ export default function App() {
                 
                 targetDeckId = editingFromDeck.deckId;
               } else {
-                console.log('Creating new deck...');
                 const newDeck = await createDeck(authenticatedUserId, deckName.trim());
-                console.log('Deck created successfully:', newDeck);
                 targetDeckId = newDeck.id;
               }
               
               // Add all local deck items to the deck with media upload
               for (let i = 0; i < localDeck.length; i++) {
                 const item = localDeck[i];
-                console.log(`Processing item ${i + 1}/${localDeck.length}...`);
                 
                 // Ensure post is properly shaped
                 const cleanPost = ensurePostShape(item.post);
                 
                 try {
                   // Upload all media files to Supabase Storage
-                  console.log(`Uploading media for item ${i + 1}...`);
                   const postWithUploadedMedia = await uploadPostMedia(cleanPost, authenticatedUserId);
                   
                   // Save to deck with the uploaded media URLs
                   await addItemToDeck(targetDeckId, postWithUploadedMedia, i);
-                  console.log(`✅ Item ${i + 1} saved successfully`);
                   
                 } catch (uploadError) {
                   console.error(`Failed to process item ${i + 1}:`, uploadError);
@@ -1033,7 +1057,6 @@ export default function App() {
                   console.warn('Upload failed, attempting to save with original media data...');
                   
                   try {
-                    console.log(`Compressing media for database fallback (item ${i + 1})...`);
                     
                     // Aggressively compress all media for database storage
                     const compressedMedia = [];
@@ -1050,7 +1073,6 @@ export default function App() {
                     
                     if (cleanPost.videoSrc && cleanPost.videoSrc.startsWith('data:video/')) {
                       try {
-                        console.log('Processing video for fallback save...');
                         const videoData = await processVideoForDeck(cleanPost.videoSrc);
                         
                         const videoSizeMB = videoData.metadata?.sizeMB || 0;
@@ -1095,14 +1117,12 @@ export default function App() {
                     
                     // Check if this would be too large for database
                     const fallbackSize = JSON.stringify(fallbackPost).length;
-                    console.log(`Item ${i + 1} compressed fallback size: ${(fallbackSize / 1024).toFixed(1)}KB`);
                     
                     if (fallbackSize > 1024 * 1024) { // 1MB limit
                       throw new Error(`Item ${i + 1} still too large after compression (${(fallbackSize / 1024 / 1024).toFixed(2)}MB). This shouldn't happen - please report this issue.`);
                     }
                     
                     await addItemToDeck(newDeck.id, fallbackPost, i);
-                    console.log(`✅ Item ${i + 1} saved with compressed fallback data`);
                     
                   } catch (fallbackError) {
                     console.error(`Fallback save also failed for item ${i + 1}:`, fallbackError);
@@ -1111,13 +1131,11 @@ export default function App() {
                 }
               }
               
-              console.log('🎉 All items saved successfully!');
               
               // Verify save by checking database
               if (editingFromDeck.deckId) {
                 try {
                   const verifyItems = await listDeckItems(editingFromDeck.deckId);
-                  console.log('✅ Verification: Deck now has', verifyItems.length, 'items in database');
                 } catch (verifyError) {
                   console.error('❌ Could not verify save:', verifyError);
                 }
@@ -1129,16 +1147,24 @@ export default function App() {
               // Trigger deck refresh for DecksPage
               setDeckRefreshTrigger(prev => {
                 const newValue = prev + 1;
-                console.log('🔄 Triggering deck refresh:', newValue);
                 return newValue;
               });
               
+              // Show save confirmation modal with deck info
+              setUiState(prev => ({
+                ...prev,
+                deckSaveConfirmOpen: true,
+                savedDeckInfo: {
+                  id: targetDeckId,
+                  name: deckName.trim(),
+                  itemCount: localDeck.length,
+                  isNewDeck: !editingFromDeck.deckId
+                }
+              }));
+              
               // If we were editing an existing deck, keep the deck strip visible
-              // If it was a new deck, optionally clear it
-              if (!editingFromDeck.deckId) {
-                setLocalDeck([]);
-                setShowDeckStrip(false);
-              }
+              // If it was a new deck, optionally clear it after user sees the confirmation
+              // (We'll handle this in the modal's "Continue Editing" action)
             } catch (error) {
               console.error("❌ Failed to save deck:", {
                 error: error.message,
@@ -1161,13 +1187,14 @@ export default function App() {
         }}
         leftPanel={
           appState.page === "decks" ? (
-            <DecksPage
-              userId={userId}
-              currentPost={null}
-              onBack={() => navigateToPage("editor")}
-              onPresent={openInternalDeckChecker}
-              refreshTrigger={deckRefreshTrigger}
-              onLoadToEditor={async (post, deckId, itemId, deckTitle) => {
+            <Suspense fallback={<div className="flex items-center justify-center h-64">Loading decks...</div>}>
+              <DecksPage
+                userId={userId}
+                currentPost={null}
+                onBack={() => navigateToPage("editor")}
+                onPresent={openInternalDeckChecker}
+                refreshTrigger={deckRefreshTrigger}
+                onLoadToEditor={async (post, deckId, itemId, deckTitle) => {
                 try {
                   // Load the entire deck into the strip
                   const deckItems = await listDeckItems(deckId);
@@ -1222,15 +1249,20 @@ export default function App() {
                   navigateToPage("editor");
                 }
               }}
-            />
+              />
+            </Suspense>
           ) : appState.page === "brands" ? (
-            <BrandsPage
-              userId={userId}
-              onBack={() => navigateToPage("editor")}
-              onOpenBrandManager={() => setUiState(prev => ({ ...prev, brandManagerOpen: true }))}
-            />
+            <Suspense fallback={<div className="flex items-center justify-center h-64">Loading brands...</div>}>
+              <BrandsPage
+                userId={userId}
+                onBack={() => navigateToPage("editor")}
+                onOpenBrandManager={() => setUiState(prev => ({ ...prev, brandManagerOpen: true }))}
+              />
+            </Suspense>
           ) : appState.page === "sharelinks" ? (
-            <ShareLinksPage />
+            <Suspense fallback={<div className="flex items-center justify-center h-64">Loading share links...</div>}>
+              <ShareLinksPage />
+            </Suspense>
           ) : (
             <LeftPanel
               user={authenticatedUser}
@@ -1303,21 +1335,96 @@ export default function App() {
       {/* Internal Deck Checker Modal */}
       {uiState.internalCheckerOpen && (
         <div className="fixed inset-0 z-50 bg-gray-100">
-          <EditorPresentMode
-            posts={uiState.checkerPosts}
-            initialIndex={0}
-            onClose={() => setUiState(prev => ({ ...prev, internalCheckerOpen: false, checkerPosts: [] }))}
-            showPlatformTags={true}
-            isInternalMode={true}
-          />
+          <Suspense fallback={<div className="flex items-center justify-center h-screen">Loading presentation...</div>}>
+            <EditorPresentMode
+              posts={uiState.checkerPosts}
+              initialIndex={0}
+              onClose={() => setUiState(prev => ({ ...prev, internalCheckerOpen: false, checkerPosts: [] }))}
+              showPlatformTags={true}
+              isInternalMode={true}
+            />
+          </Suspense>
         </div>
       )}
 
       {/* Custom Confirmation Modal */}
       <ConfirmModal />
       
-      {/* Toast Notifications */}
-      <ToastContainer />
+      {/* Global Search */}
+      <GlobalSearch
+        isOpen={uiState.globalSearchOpen}
+        onClose={closeGlobalSearch}
+        onNavigateToDeck={handleNavigateToDeck}
+        onLoadPostToEditor={handleLoadPostFromSearch}
+        onNavigateToBrands={handleNavigateToBrandsFromSearch}
+        userId={userId}
+      />
+
+      {/* Deck Save Confirmation Modal */}
+      {uiState.deckSaveConfirmOpen && uiState.savedDeckInfo && (
+        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl border border-gray-200/50 w-full max-w-md overflow-hidden">
+            {/* Success Header */}
+            <div className="bg-gradient-to-r from-green-500 to-emerald-500 px-6 py-4">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-white/20 rounded-full flex items-center justify-center">
+                  <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                  </svg>
+                </div>
+                <div>
+                  <h3 className="text-lg font-semibold text-white">Deck Saved Successfully!</h3>
+                  <p className="text-green-100 text-sm">Your content is ready to share</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Content */}
+            <div className="p-6">
+              <div className="mb-6">
+                <h4 className="font-semibold text-gray-900 mb-2">{uiState.savedDeckInfo.name}</h4>
+                <div className="text-sm text-gray-600 space-y-1">
+                  <p>{uiState.savedDeckInfo.itemCount} post{uiState.savedDeckInfo.itemCount !== 1 ? 's' : ''} saved</p>
+                  <p className="text-green-600">
+                    {uiState.savedDeckInfo.isNewDeck ? 'New deck created' : 'Existing deck updated'}
+                  </p>
+                </div>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex gap-3">
+                <button
+                  onClick={() => {
+                    navigateToPage("decks");
+                    setUiState(prev => ({ ...prev, deckSaveConfirmOpen: false, savedDeckInfo: null }));
+                  }}
+                  className="flex-1 px-4 py-3 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors flex items-center justify-center gap-2"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                  </svg>
+                  View Deck
+                </button>
+                <button
+                  onClick={() => {
+                    // For new decks, clear the strip; for existing decks, keep editing
+                    if (uiState.savedDeckInfo.isNewDeck) {
+                      setLocalDeck([]);
+                      setShowDeckStrip(false);
+                    }
+                    setUiState(prev => ({ ...prev, deckSaveConfirmOpen: false, savedDeckInfo: null }));
+                  }}
+                  className="flex-1 px-4 py-3 bg-gray-100 text-gray-700 rounded-lg font-medium hover:bg-gray-200 transition-colors"
+                >
+                  Continue Editing
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+      
     </Fragment>
   );
 }

@@ -1,8 +1,8 @@
 // Simple, self-contained video controls that don't cause render loops
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, memo } from 'react';
 import { Play, Pause, Volume2, VolumeX } from 'lucide-react';
 
-export default function SimpleVideoControls({ videoRef, className = "" }) {
+export default memo(function SimpleVideoControls({ videoRef, className = "" }) {
   const [isPlaying, setIsPlaying] = useState(false);
   const [isMuted, setIsMuted] = useState(true);
   
@@ -65,4 +65,4 @@ export default function SimpleVideoControls({ videoRef, className = "" }) {
       </div>
     </div>
   );
-}
+});

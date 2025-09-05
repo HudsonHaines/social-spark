@@ -6,7 +6,12 @@
       "Bash(npm run build:*)",
       "Bash(npm run lint)",
       "Bash(grep:*)",
-      "Bash(find:*)"
+      "Bash(find:*)",
+      "Bash(npm run lint:*)",
+      "Bash(sed:*)",
+      "Bash(for file in src/hooks/useExportStability.js src/share/ShareViewer.jsx src/components/LeftPanel.jsx)",
+      "Bash(done)",
+      "Bash(git checkout:*)"
     ],
     "deny": [],
     "ask": []

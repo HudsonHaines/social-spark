@@ -1,181 +1,146 @@
 // src/components/Toast.jsx
-import React, { useState, useEffect } from "react";
-import { CheckCircle, XCircle, AlertTriangle, Info, X } from "lucide-react";
+import React, { createContext, useContext, useState, useCallback } from 'react';
+import { Check, AlertTriangle, Info, X, AlertCircle } from 'lucide-react';
 
-const cx = (...a) => a.filter(Boolean).join(" ");
+const ToastContext = createContext();
 
-const iconMap = {
-  success: CheckCircle,
-  error: XCircle,
+export const useToast = () => {
+  const context = useContext(ToastContext);
+  if (!context) {
+    throw new Error('useToast must be used within a ToastProvider');
+  }
+  return context;
+};
+
+const toastIcons = {
+  success: Check,
+  error: AlertCircle,
   warning: AlertTriangle,
   info: Info
 };
 
-const colorMap = {
-  success: {
-    bg: "bg-green-50",
-    border: "border-green-200", 
-    icon: "text-green-500",
-    text: "text-green-800"
-  },
-  error: {
-    bg: "bg-red-50",
-    border: "border-red-200",
-    icon: "text-red-500",
-    text: "text-red-800"
-  },
-  warning: {
-    bg: "bg-yellow-50",
-    border: "border-yellow-200",
-    icon: "text-yellow-500",
-    text: "text-yellow-800"
-  },
-  info: {
-    bg: "bg-blue-50",
-    border: "border-blue-200",
-    icon: "text-blue-500",
-    text: "text-blue-800"
-  }
+const toastStyles = {
+  success: 'bg-green-50 border-green-200 text-green-800',
+  error: 'bg-red-50 border-red-200 text-red-800',
+  warning: 'bg-yellow-50 border-yellow-200 text-yellow-800',
+  info: 'bg-blue-50 border-blue-200 text-blue-800'
 };
 
-export default function Toast({ 
-  open, 
-  onClose, 
-  message, 
-  type = "info",
-  duration = 3000,
-  position = "top-right" // top-right, top-left, bottom-right, bottom-left
-}) {
-  const [isVisible, setIsVisible] = useState(false);
-  const [isLeaving, setIsLeaving] = useState(false);
+const iconStyles = {
+  success: 'text-green-600',
+  error: 'text-red-600',
+  warning: 'text-yellow-600',
+  info: 'text-blue-600'
+};
 
-  useEffect(() => {
-    if (open) {
-      setIsVisible(true);
-      setIsLeaving(false);
-      
-      if (duration > 0) {
-        const timer = setTimeout(() => {
-          handleClose();
-        }, duration);
-        return () => clearTimeout(timer);
-      }
-    }
-  }, [open, duration]);
-
-  const handleClose = () => {
-    setIsLeaving(true);
-    setTimeout(() => {
-      setIsVisible(false);
-      onClose?.();
-    }, 150); // Animation duration
-  };
-
-  if (!open && !isVisible) return null;
-
-  const Icon = iconMap[type];
-  const colors = colorMap[type];
+function Toast({ toast, onClose }) {
+  const Icon = toastIcons[toast.type];
   
-  const positionClasses = {
-    "top-right": "top-4 right-4",
-    "top-left": "top-4 left-4", 
-    "bottom-right": "bottom-4 right-4",
-    "bottom-left": "bottom-4 left-4"
-  };
-
   return (
-    <div
-      className={cx(
-        "fixed z-[400] max-w-sm pointer-events-auto",
-        positionClasses[position]
-      )}
-    >
-      <div
-        className={cx(
-          "flex items-start gap-3 p-4 rounded-lg border shadow-lg transition-all duration-150 ease-out",
-          colors.bg,
-          colors.border,
-          isLeaving 
-            ? "transform translate-x-full opacity-0" 
-            : "transform translate-x-0 opacity-100"
-        )}
-      >
-        <Icon className={cx("w-5 h-5 flex-shrink-0 mt-0.5", colors.icon)} />
-        <div className="flex-1 min-w-0">
-          <p className={cx("text-sm font-medium", colors.text)}>
-            {message}
-          </p>
+    <div className={`
+      w-full shadow-lg rounded-lg pointer-events-auto border
+      transform transition-all duration-300 ease-in-out
+      ${toastStyles[toast.type]}
+      ${toast.isLeaving ? 'translate-x-full opacity-0' : 'translate-x-0 opacity-100'}
+    `}>
+      <div className="p-4">
+        <div className="flex items-start">
+          <div className="flex-shrink-0">
+            <Icon className={`h-5 w-5 ${iconStyles[toast.type]}`} />
+          </div>
+          <div className="ml-3 flex-1 pt-0.5 min-w-0">
+            {toast.title && (
+              <p className="text-sm font-medium break-words">{toast.title}</p>
+            )}
+            <p className={`text-sm break-words ${toast.title ? 'mt-1' : ''}`}>
+              {toast.message}
+            </p>
+          </div>
+          <div className="ml-4 flex-shrink-0 flex">
+            <button
+              className={`
+                rounded-md inline-flex hover:opacity-75 focus:outline-none 
+                focus:ring-2 focus:ring-offset-2 transition-opacity
+                ${iconStyles[toast.type]}
+              `}
+              onClick={() => onClose(toast.id)}
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
         </div>
-        <button
-          onClick={handleClose}
-          className="flex-shrink-0 ml-2 text-gray-400 hover:text-gray-600 transition-colors"
-        >
-          <X className="w-4 h-4" />
-        </button>
       </div>
     </div>
   );
 }
 
-// Hook for easier usage
-export function useToast() {
+export function ToastProvider({ children }) {
   const [toasts, setToasts] = useState([]);
 
-  const addToast = (toast) => {
+  const addToast = useCallback((toast) => {
     const id = Date.now() + Math.random();
-    const newToast = { id, ...toast };
-    
+    const newToast = {
+      id,
+      type: 'info',
+      duration: 5000,
+      ...toast
+    };
+
     setToasts(prev => [...prev, newToast]);
-    
-    // Auto-remove after duration
-    const duration = toast.duration ?? 3000;
-    if (duration > 0) {
+
+    // Auto remove after duration
+    if (newToast.duration > 0) {
       setTimeout(() => {
         removeToast(id);
-      }, duration);
+      }, newToast.duration);
     }
+
+    return id;
+  }, []);
+
+  const removeToast = useCallback((id) => {
+    setToasts(prev => 
+      prev.map(toast => 
+        toast.id === id 
+          ? { ...toast, isLeaving: true }
+          : toast
+      )
+    );
+
+    // Remove from DOM after animation
+    setTimeout(() => {
+      setToasts(prev => prev.filter(toast => toast.id !== id));
+    }, 300);
+  }, []);
+
+  // Convenience methods
+  const toast = useCallback({
+    success: (message, options = {}) => addToast({ ...options, message, type: 'success' }),
+    error: (message, options = {}) => addToast({ ...options, message, type: 'error' }),
+    warning: (message, options = {}) => addToast({ ...options, message, type: 'warning' }),
+    info: (message, options = {}) => addToast({ ...options, message, type: 'info' })
+  }, [addToast]);
+
+  const value = {
+    toast,
+    addToast,
+    removeToast
   };
 
-  const removeToast = (id) => {
-    setToasts(prev => prev.filter(toast => toast.id !== id));
-  };
-
-  const success = (message, options = {}) => {
-    addToast({ message, type: "success", ...options });
-  };
-
-  const error = (message, options = {}) => {
-    addToast({ message, type: "error", ...options });
-  };
-
-  const warning = (message, options = {}) => {
-    addToast({ message, type: "warning", ...options });
-  };
-
-  const info = (message, options = {}) => {
-    addToast({ message, type: "info", ...options });
-  };
-
-  const ToastContainer = () => (
-    <div className="fixed top-4 right-4 z-[400] space-y-2">
-      {toasts.map((toast) => (
-        <Toast
-          key={toast.id}
-          open={true}
-          message={toast.message}
-          type={toast.type}
-          duration={0} // Handle duration in the hook
-          onClose={() => removeToast(toast.id)}
-        />
-      ))}
-    </div>
+  return (
+    <ToastContext.Provider value={value}>
+      {children}
+      
+      {/* Toast Container */}
+      <div className="fixed top-4 right-4 z-50 flex flex-col gap-3 max-w-sm w-96">
+        {toasts.map(toastItem => (
+          <Toast
+            key={toastItem.id}
+            toast={toastItem}
+            onClose={removeToast}
+          />
+        ))}
+      </div>
+    </ToastContext.Provider>
   );
-
-  return {
-    success,
-    error,
-    warning,
-    info,
-    ToastContainer
-  };
 }

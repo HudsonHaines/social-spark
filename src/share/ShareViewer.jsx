@@ -5,6 +5,7 @@ import { ensurePostShape } from "../data/postShape";
 import { supabase } from "../lib/supabaseClient";
 import { ViewProvider } from "../contexts/ViewContext";
 import ViewToggle from "../components/ViewToggle";
+import { Skeleton } from "../components/Skeleton";
 
 function ShareViewerInner({ token }) {
   const [loading, setLoading] = useState(true);
@@ -117,7 +118,6 @@ function ShareViewerInner({ token }) {
             .eq('token', token);
 
           if (updateError) throw updateError;
-          console.log('View count incremented to:', newCount);
         } catch (viewError) {
           console.error('Failed to increment view count:', viewError);
           // Don't fail the whole load if view counting fails
@@ -218,8 +218,24 @@ function ShareViewerInner({ token }) {
       {/* Main content area - focused on posts */}
       <div className="max-w-4xl mx-auto px-6 py-8">
         {loading ? (
-          <div className="flex items-center justify-center py-16">
-            <div className="animate-spin w-8 h-8 border-2 border-gray-300 border-t-gray-900 rounded-full"></div>
+          <div className="space-y-6">
+            {/* Header skeleton */}
+            <div className="flex items-center justify-between mb-4">
+              <Skeleton className="h-6 w-32" />
+              <Skeleton className="h-8 w-24" />
+            </div>
+            {/* Post preview skeleton */}
+            <div className="flex justify-center">
+              <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+                <Skeleton className="aspect-square w-96" />
+              </div>
+            </div>
+            {/* Navigation skeleton */}
+            <div className="flex items-center justify-center gap-4">
+              <Skeleton className="h-10 w-10 rounded-full" />
+              <Skeleton className="h-6 w-24" />
+              <Skeleton className="h-10 w-10 rounded-full" />
+            </div>
           </div>
         ) : err ? (
           <div className="text-center py-16">

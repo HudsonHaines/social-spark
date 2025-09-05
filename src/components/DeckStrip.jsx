@@ -7,6 +7,8 @@ import {
   Trash2, 
   Video as VideoIcon, 
   Image as ImageIcon,
+  Images as ImagesIcon,
+  Film,
   ChevronLeft,
   ChevronRight,
   Save,
@@ -292,56 +294,33 @@ const DeckStrip = memo(function DeckStrip({
       )}
       
       {/* Deck Header */}
-      <div className="flex items-center px-4 py-2 border-b border-gray-100">
-        <div className="flex items-center gap-3 flex-1">
-          <span className="text-sm font-medium text-gray-700">
+      <div className="flex items-center justify-between px-4 py-2 border-b border-gray-100">
+        {/* Left side: Title and post info */}
+        <div className="flex items-center gap-2 flex-1 min-w-0">
+          <span className="text-sm font-medium text-gray-700 truncate">
             {isEditingExistingDeck ? (
               <>
                 Editing: <span className="text-blue-600">{currentDeckTitle}</span>
               </>
             ) : 'Deck Preview'}
           </span>
-          <span className="text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full">
+          <span className="text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full whitespace-nowrap">
             {deck.length} post{deck.length === 1 ? '' : 's'}
           </span>
-          
+        </div>
+
+        {/* Right side: Current post and save status */}
+        <div className="flex items-center gap-2 flex-shrink-0">
           {/* Current Post Indicator */}
           {currentPostIndex >= 0 && (
-            <span className="text-xs text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full font-medium">
-              Post {currentPostIndex + 1} of {deck.length}
+            <span className="text-xs text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full font-medium whitespace-nowrap">
+              {currentPostIndex + 1} of {deck.length}
             </span>
-          )}
-          
-          
-          {/* Deck Analytics */}
-          {deck.length > 0 && (
-            <div className="flex items-center gap-1 text-xs">
-              {deckStats.fbPosts > 0 && (
-                <span className="bg-blue-50 text-blue-700 px-2 py-0.5 rounded-full">
-                  FB: {deckStats.fbPosts}
-                </span>
-              )}
-              {deckStats.igPosts > 0 && (
-                <span className="bg-purple-50 text-purple-700 px-2 py-0.5 rounded-full">
-                  IG: {deckStats.igPosts}
-                </span>
-              )}
-              {deckStats.reelsPosts > 0 && (
-                <span className="bg-pink-50 text-pink-700 px-2 py-0.5 rounded-full">
-                  Reels: {deckStats.reelsPosts}
-                </span>
-              )}
-              {deckStats.emptyPosts > 0 && (
-                <span className="bg-red-50 text-red-700 px-2 py-0.5 rounded-full">
-                  Empty: {deckStats.emptyPosts}
-                </span>
-              )}
-            </div>
           )}
 
           {lastSaved && (
-            <span className="text-xs text-green-600 bg-green-50 px-2 py-0.5 rounded-full">
-              Saved {new Date(lastSaved).toLocaleTimeString()}
+            <span className="text-xs text-green-600 bg-green-50 px-2 py-0.5 rounded-full whitespace-nowrap">
+              Saved {new Date(lastSaved).toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'})}
             </span>
           )}
         </div>
@@ -641,6 +620,52 @@ const DeckStrip = memo(function DeckStrip({
   );
 });
 
+// Helper function to get post type icon and info
+const getPostTypeInfo = (post) => {
+  // Check for reel type
+  if (post?.type === "reel" || post?.isReel) {
+    return {
+      icon: <Film className="w-3 h-3" />,
+      label: "Reel",
+      color: "bg-purple-500"
+    };
+  }
+  
+  // Check for carousel (multiple images)
+  if (post?.type === "carousel" || (post?.media?.length > 1)) {
+    return {
+      icon: <ImagesIcon className="w-3 h-3" />,
+      label: "Carousel",
+      color: "bg-blue-500"
+    };
+  }
+  
+  // Check for video
+  if (post?.videoSrc || post?.type === "video") {
+    return {
+      icon: <VideoIcon className="w-3 h-3" />,
+      label: "Video",
+      color: "bg-red-500"
+    };
+  }
+  
+  // Check for single image
+  if (post?.media?.length === 1) {
+    return {
+      icon: <ImageIcon className="w-3 h-3" />,
+      label: "Image",
+      color: "bg-green-500"
+    };
+  }
+  
+  // Text post or no media
+  return {
+    icon: <FileText className="w-3 h-3" />,
+    label: "Text",
+    color: "bg-gray-500"
+  };
+};
+
 const DeckItem = memo(function DeckItem({ 
   item, 
   index, 
@@ -659,6 +684,7 @@ const DeckItem = memo(function DeckItem({
 }) {
   const { post } = item;
   const hasMedia = post?.media?.length > 0 || post?.videoSrc;
+  const postTypeInfo = getPostTypeInfo(post);
   
   // Check if post has unsaved changes (basic heuristic: recently updated but not saved)
   const hasUnsavedChanges = item.updatedAt && (!item.savedAt || item.updatedAt > item.savedAt);
@@ -745,6 +771,16 @@ const DeckItem = memo(function DeckItem({
                 <path d="M12,2.163c3.204,0,3.584,0.012,4.85,0.07c3.252,0.148,4.771,1.691,4.919,4.919c0.058,1.265,0.069,1.645,0.069,4.849c0,3.205-0.012,3.584-0.069,4.849c-0.149,3.225-1.664,4.771-4.919,4.919c-1.266,0.058-1.644,0.07-4.85,0.07c-3.204,0-3.584-0.012-4.849-0.07c-3.26-0.149-4.771-1.699-4.919-4.92c-0.058-1.265-0.07-1.644-0.07-4.849c0-3.204,0.013-3.583,0.07-4.849c0.149-3.227,1.664-4.771,4.919-4.919c1.266-0.057,1.645-0.069,4.849-0.069zm0-2.163c-3.259,0-3.667,0.014-4.947,0.072c-4.358,0.2-6.78,2.618-6.98,6.98c-0.059,1.281-0.073,1.689-0.073,4.948c0,3.259,0.014,3.668,0.072,4.948c0.2,4.358,2.618,6.78,6.98,6.98c1.281,0.058,1.689,0.072,4.948,0.072c3.259,0,3.668-0.014,4.948-0.072c4.354-0.2,6.782-2.618,6.979-6.98c0.059-1.28,0.073-1.689,0.073-4.948c0-3.259-0.014-3.667-0.072-4.947c-0.196-4.354-2.617-6.78-6.979-6.98c-1.281-0.059-1.69-0.073-4.949-0.073zm0,5.838c-3.403,0-6.162,2.759-6.162,6.162c0,3.403,2.759,6.163,6.162,6.163s6.162-2.759,6.162-6.163c0-3.403-2.759-6.162-6.162-6.162zm0,10.162c-2.209,0-4-1.79-4-4c0-2.209,1.791-4,4-4s4,1.791,4,4c0,2.21-1.791,4-4,4zm6.406-11.845c-0.796,0-1.441,0.645-1.441,1.44s0.645,1.44,1.441,1.44c0.795,0,1.439-0.645,1.439-1.44s-0.644-1.44-1.439-1.44z"/>
               </svg>
             )}
+          </div>
+        </div>
+
+        {/* Post Type Badge */}
+        <div className="absolute bottom-1 left-1">
+          <div className={cx(
+            "flex items-center gap-1 text-white text-[10px] font-medium rounded px-1.5 py-0.5 shadow-sm",
+            postTypeInfo.color
+          )} title={postTypeInfo.label}>
+            {postTypeInfo.icon}
           </div>
         </div>
 

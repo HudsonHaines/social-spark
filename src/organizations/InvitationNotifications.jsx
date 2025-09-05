@@ -21,8 +21,6 @@ export default function InvitationNotifications({ className = '' }) {
     try {
       setLoading(true);
       const data = await fetchUserInvitations();
-      console.log('Loaded invitations:', data);
-      console.log('First invitation organizations:', data[0]?.organizations);
       setInvitations(data);
     } catch (error) {
       console.error('Failed to load invitations:', error);

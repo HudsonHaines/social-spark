@@ -1,8 +1,8 @@
-import React from 'react';
+import React, { memo } from 'react';
 import SimpleVideoControls from './SimpleVideoControls';
 import { useView } from '../contexts/ViewContext';
 
-export default function SimpleFacebookReel({ post, videoRef, mode = "create" }) {
+export default memo(function SimpleFacebookReel({ post, videoRef, mode = "create" }) {
   const { isMobile } = useView();
   return (
     <div 
@@ -181,4 +181,4 @@ export default function SimpleFacebookReel({ post, videoRef, mode = "create" }) 
       </div>
     </div>
   );
-}
+});
