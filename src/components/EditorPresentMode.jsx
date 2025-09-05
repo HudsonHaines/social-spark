@@ -1,5 +1,5 @@
 // src/components/EditorPresentMode.jsx
-import React, { useEffect, useMemo, useState, useCallback, memo } from "react";
+import React, { useEffect, useMemo, useState, useCallback, memo, useRef } from "react";
 import RightPreview from "./RightPreview";
 import { useNormalizedPost } from "../data/postShape";
 import { ChevronLeft, ChevronRight, ChevronDown } from "lucide-react";
@@ -12,6 +12,7 @@ const EditorPresentMode = memo(function EditorPresentMode({
   isInternalMode = false, // NEW: enable internal deck checker features
 }) {
   const [currentIndex, setCurrentIndex] = useState(initialIndex);
+  const videoRef = useRef(null); // Add videoRef for working video controls
 
   // Memoize current post with our optimized hook
   const currentPost = useMemo(
@@ -117,6 +118,7 @@ const EditorPresentMode = memo(function EditorPresentMode({
               post={normalizedPost}
               setPost={setLocalPost} // Allow carousel to update active index
               mode="present"
+              videoRef={videoRef} // Add videoRef for working video controls
               clamp={null} // Let content size naturally
               showExport={false} // Hide export button in present mode
             />

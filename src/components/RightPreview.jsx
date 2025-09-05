@@ -53,6 +53,7 @@ const RightPreview = forwardRef(function RightPreview(
   },
   previewRef
 ) {
+  console.log('🎬 RightPreview received videoRef:', videoRef);
   // RightPreview will re-render on post changes, but StableVideo won't remount
 
   // Create a separate ref for the exportable content
@@ -112,13 +113,13 @@ const RightPreview = forwardRef(function RightPreview(
     const isLandscape = aspectRatio === "16:9" || aspectRatio === "1.91:1";
 
     if (mode === "present") {
-      // Let content flow naturally without height constraints
+      // Present mode - ensure full visibility without scrolling
       if (isPortrait) {
-        return { maxWidth: "100%", width: "100%" };
+        return { maxWidth: "min(450px, 90vw)", maxHeight: "90vh" };
       } else if (isLandscape) {
-        return { maxWidth: "100%", width: "100%" };
+        return { maxWidth: "min(700px, 95vw)", maxHeight: "80vh" };
       } else {
-        return { maxWidth: "100%", width: "100%" };
+        return { maxWidth: "min(550px, 90vw)", maxHeight: "85vh" };
       }
     } else {
       // Create mode - maximized for better editing experience

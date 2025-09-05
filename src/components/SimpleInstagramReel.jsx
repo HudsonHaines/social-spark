@@ -4,6 +4,7 @@ import { useView } from '../contexts/ViewContext';
 
 export default function SimpleInstagramReel({ post, videoRef, mode = "create" }) {
   const { isMobile } = useView();
+  console.log('🎬 SimpleInstagramReel received videoRef:', videoRef);
   return (
     <div 
       className="bg-black w-full h-full relative overflow-hidden"
@@ -28,10 +29,8 @@ export default function SimpleInstagramReel({ post, videoRef, mode = "create" })
               poster={post.media?.[0]}
             />
             
-            {/* Simple video controls - only in create mode */}
-            {mode === "create" && (
-              <SimpleVideoControls videoRef={videoRef} />
-            )}
+            {/* Simple video controls - show in all modes for playback */}
+            <SimpleVideoControls videoRef={videoRef} />
           </>
         ) : post.media?.[0] ? (
           <img

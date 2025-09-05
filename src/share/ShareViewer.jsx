@@ -1,5 +1,5 @@
 // src/share/ShareViewer.jsx
-import React, { useEffect, useMemo, useState, useCallback } from "react";
+import React, { useEffect, useMemo, useState, useCallback, useRef } from "react";
 import RightPreview from "../components/RightPreview";
 import { ensurePostShape } from "../data/postShape";
 import { supabase } from "../lib/supabaseClient";
@@ -16,6 +16,7 @@ function ShareViewerInner({ token }) {
   const [organizationInfo, setOrganizationInfo] = useState(null);
 
   const [currentPost, setCurrentPost] = useState(() => ensurePostShape({}));
+  const videoRef = useRef(null); // Add videoRef for proper video controls
 
   // Update current post when index changes
   useEffect(() => {
@@ -241,7 +242,8 @@ function ShareViewerInner({ token }) {
                   post={post}
                   setPost={setCurrentPost}
                   mode="present"
-                  clamp={{ maxVmin: 60, maxPx: 480 }}
+                  videoRef={videoRef}                  // Add videoRef for working video controls
+                  clamp={{ maxVmin: 85, maxPx: 550 }}
                   showExport={false}
                 />
               </div>

@@ -8,6 +8,8 @@ export default function PostPreviewModal({ open, onClose, post, previewContext, 
 
   const [localPost, setLocalPost] = useState(() => ensurePostShape(post || {}));
   const previewRef = useRef(null);
+  const videoRef = useRef(null); // Add videoRef for proper video controls
+  console.log('🎬 PostPreviewModal created videoRef:', videoRef);
 
   useEffect(() => {
     setLocalPost(ensurePostShape(post || {}));
@@ -16,9 +18,11 @@ export default function PostPreviewModal({ open, onClose, post, previewContext, 
   return (
     <div className="fixed inset-0 z-[300]">
       <div className="absolute inset-0 bg-black/50" onClick={onClose} />
-      <div className="absolute inset-0 p-4 flex items-center justify-center">
+      <div className="absolute inset-0 p-4 flex items-center justify-center" style={{ pointerEvents: 'none' }}>
         <div
           className="w-[96vw] max-w-[1000px] max-h-[92vh] bg-white rounded-2xl shadow-xl border overflow-hidden flex flex-col"
+          style={{ pointerEvents: 'auto' }} // Re-enable pointer events for modal content
+          onClick={(e) => e.stopPropagation()} // Prevent backdrop click when clicking inside modal
         >
           <div className="flex items-center justify-between px-4 h-14 border-b">
             <div className="font-medium">Post preview</div>
@@ -44,14 +48,16 @@ export default function PostPreviewModal({ open, onClose, post, previewContext, 
             </div>
           </div>
 
-          {/* Scroll the content area if needed */}
-          <div className="p-4 overflow-auto">
+          {/* Content area - no scroll to keep post fully visible */}
+          <div className="p-4 flex-1 flex items-center justify-center">
+            {(() => { console.log('🎬 About to render RightPreview with videoRef:', videoRef); return null; })()}
             <RightPreview
               ref={previewRef}
               post={localPost}
               setPost={setLocalPost}
               mode="present"
-              clamp={{ maxVmin: 72, maxPx: 560 }}  // tighter than normal to fit viewport
+              videoRef={videoRef}                  // Add videoRef for working video controls
+              clamp={{ maxVmin: 85, maxPx: 550 }}  // consistent viewport sizing for full visibility
               showExport={false}                   // hide export button inside modal
               saveAsPng={() => {}}
               savingImg={false}

@@ -29,7 +29,7 @@ import {
 } from "lucide-react";
 import PostPreviewModal from "./PostPreviewModal";
 import { getVideoThumbnail, canPlayVideo } from "../data/videoUtils";
-import ViewToggle from "../components/ViewToggle";
+import { useConfirmModal } from "../components/ConfirmModal";
 
 const cx = (...a) => a.filter(Boolean).join(" ");
 
@@ -75,6 +75,9 @@ export default function DecksPage({
   const [newDeckName, setNewDeckName] = useState('');
 
   const { decks, items, activeId, loading } = state;
+
+  // Modal hook for replacing Chrome alerts/confirms
+  const { confirm, alert, ConfirmModal } = useConfirmModal();
 
   const activeDeck = useMemo(
     () => decks.find((d) => String(d.id) === activeId) || null,
@@ -193,7 +196,12 @@ export default function DecksPage({
       }));
     } catch (error) {
       console.error('Add current error:', error);
-      alert("Could not add post.");
+      await alert({
+        title: "Error",
+        message: "Could not add post. Please try again.",
+        type: "error",
+        confirmText: "OK"
+      });
     } finally {
       setState(prev => {
         const newOps = new Set(prev.loading.operations);
@@ -229,9 +237,16 @@ export default function DecksPage({
 
   const handleBulkDelete = useCallback(async () => {
     if (selectedItems.size === 0) return;
-    if (!confirm(`Are you sure you want to delete ${selectedItems.size} post(s) from this deck? This cannot be undone.`)) {
-      return;
-    }
+    
+    const confirmed = await confirm({
+      title: "Delete Posts",
+      message: `Are you sure you want to delete ${selectedItems.size} post(s) from this deck? This cannot be undone.`,
+      type: "warning",
+      confirmText: "Delete Posts",
+      cancelText: "Cancel"
+    });
+    
+    if (!confirmed) return;
 
     setBulkUpdating(true);
     
@@ -244,14 +259,25 @@ export default function DecksPage({
         error: null
       }));
       setSelectedItems(new Set());
-      alert(`Successfully deleted ${selectedItems.size} post(s).`);
+      
+      await alert({
+        title: "Posts Deleted",
+        message: `Successfully deleted ${selectedItems.size} post(s).`,
+        type: "success",
+        confirmText: "OK"
+      });
     } catch (err) {
       console.error('Failed to bulk delete:', err);
-      alert('Failed to delete posts: ' + err.message);
+      await alert({
+        title: "Error",
+        message: `Failed to delete posts: ${err.message}`,
+        type: "error",
+        confirmText: "OK"
+      });
     } finally {
       setBulkUpdating(false);
     }
-  }, [selectedItems, activeId]);
+  }, [selectedItems, activeId, confirm, alert]);
 
   // Deck rename handlers
   const handleStartRename = useCallback((deckId, currentName) => {
@@ -279,7 +305,12 @@ export default function DecksPage({
       setNewDeckName('');
     } catch (err) {
       console.error('Failed to rename deck:', err);
-      alert('Failed to rename deck: ' + err.message);
+      await alert({
+        title: "Error",
+        message: `Failed to rename deck: ${err.message}`,
+        type: "error",
+        confirmText: "OK"
+      });
     }
   }, [renamingDeckId, newDeckName, userId]);
 
@@ -306,9 +337,16 @@ export default function DecksPage({
 
   const handleBulkDeleteDecks = useCallback(async () => {
     if (selectedDecks.size === 0) return;
-    if (!confirm(`Are you sure you want to delete ${selectedDecks.size} deck(s) and all their posts? This cannot be undone.`)) {
-      return;
-    }
+    
+    const confirmed = await confirm({
+      title: "Delete Decks",
+      message: `Are you sure you want to delete ${selectedDecks.size} deck(s) and all their posts? This cannot be undone.`,
+      type: "warning",
+      confirmText: "Delete Decks",
+      cancelText: "Cancel"
+    });
+    
+    if (!confirmed) return;
 
     setBulkDeckUpdating(true);
     
@@ -328,18 +366,39 @@ export default function DecksPage({
         error: null
       }));
       setSelectedDecks(new Set());
-      alert(`Successfully deleted ${selectedDecks.size} deck(s).`);
+      
+      await alert({
+        title: "Decks Deleted",
+        message: `Successfully deleted ${selectedDecks.size} deck(s).`,
+        type: "success",
+        confirmText: "OK"
+      });
     } catch (err) {
       console.error('Failed to bulk delete decks:', err);
-      alert('Failed to delete decks: ' + err.message);
+      await alert({
+        title: "Error",
+        message: `Failed to delete decks: ${err.message}`,
+        type: "error",
+        confirmText: "OK"
+      });
     } finally {
       setBulkDeckUpdating(false);
     }
-  }, [selectedDecks, userId]);
+  }, [selectedDecks, userId, confirm, alert]);
 
   async function handleDeleteDeck(deckId) {
     if (!deckId) return;
-    if (!confirm("Delete this deck and all posts in it?")) return;
+    
+    const confirmed = await confirm({
+      title: "Delete Deck",
+      message: "Delete this deck and all posts in it? This cannot be undone.",
+      type: "warning",
+      confirmText: "Delete Deck",
+      cancelText: "Cancel"
+    });
+    
+    if (!confirmed) return;
+    
     try {
       await deleteDeck(deckId);
       const rows = await listDecks(userId);
@@ -349,9 +408,21 @@ export default function DecksPage({
         activeId: rows.length ? String(rows[0].id) : null,
         items: rows.length ? prev.items : []
       }));
+      
+      await alert({
+        title: "Deck Deleted",
+        message: "The deck has been successfully deleted.",
+        type: "success",
+        confirmText: "OK"
+      });
     } catch (e) {
       console.error(e);
-      alert("Could not delete deck.");
+      await alert({
+        title: "Error",
+        message: "Could not delete deck. Please try again.",
+        type: "error",
+        confirmText: "OK"
+      });
     }
   }
 
@@ -363,7 +434,12 @@ export default function DecksPage({
       setItems(rows);
     } catch (e) {
       console.error(e);
-      alert("Could not delete post.");
+      await alert({
+        title: "Error",
+        message: "Could not delete post. Please try again.",
+        type: "error",
+        confirmText: "OK"
+      });
     }
   }
 
@@ -380,7 +456,12 @@ export default function DecksPage({
       console.log("Share link retrieved/created:", url);
     } catch (e) {
       console.error("Share link error:", e);
-      alert(`Could not get share link. Error: ${e.message}`);
+      await alert({
+        title: "Error",
+        message: `Could not get share link. Error: ${e.message}`,
+        type: "error",
+        confirmText: "OK"
+      });
     }
   }
 
@@ -400,9 +481,7 @@ export default function DecksPage({
           </button>
           <div className="font-medium text-app-strong">Manage decks</div>
         </div>
-        <div className="flex-1 flex justify-center">
-          <ViewToggle size="small" showLabels={false} />
-        </div>
+        <div className="flex-1"></div>
         <div className="flex items-center gap-2">
           <button
             className="btn-outline"
@@ -833,6 +912,9 @@ export default function DecksPage({
         url={shareUrl}
         deckTitle={activeDeck?.title}
       />
+      
+      {/* Confirmation modal for alerts/confirms */}
+      <ConfirmModal />
     </div>
   );
 }

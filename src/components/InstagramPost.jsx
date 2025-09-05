@@ -183,7 +183,8 @@ export default function InstagramPost({
             {/* Video Controls Overlay */}
             <div className={cx(
               "absolute inset-0 bg-black/10 flex items-center justify-center transition-opacity duration-200",
-              showControls ? "opacity-100" : "opacity-0"
+              // In present mode, show controls more prominently for better UX
+              mode === "present" ? (showControls ? "opacity-100" : "opacity-60") : (showControls ? "opacity-100" : "opacity-0")
             )}>
               {/* Play/Pause Button */}
               <button
@@ -203,7 +204,8 @@ export default function InstagramPost({
               onClick={toggleMute}
               className={cx(
                 "absolute top-4 right-4 w-10 h-10 bg-black/60 rounded-full flex items-center justify-center hover:bg-black/80 transition-all duration-200",
-                showControls ? "opacity-100" : "opacity-0"
+                // In present mode, show controls more prominently for better UX
+                mode === "present" ? (showControls ? "opacity-100" : "opacity-60") : (showControls ? "opacity-100" : "opacity-0")
               )}
             >
               {isMuted ? (
