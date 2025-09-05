@@ -3,7 +3,7 @@ import React, { useEffect, useRef, useState } from "react";
 import RightPreview from "../components/RightPreview";
 import { ensurePostShape } from "../data/postShape";
 
-export default function PostPreviewModal({ open, onClose, post, onLoadToEditor }) {
+export default function PostPreviewModal({ open, onClose, post, previewContext, onLoadToEditor }) {
   if (!open) return null;
 
   const [localPost, setLocalPost] = useState(() => ensurePostShape(post || {}));
@@ -24,8 +24,20 @@ export default function PostPreviewModal({ open, onClose, post, onLoadToEditor }
             <div className="font-medium">Post preview</div>
             <div className="flex items-center gap-2">
               {typeof onLoadToEditor === "function" ? (
-                <button className="btn-outline" onClick={() => onLoadToEditor(localPost)}>
-                  Load in editor
+                <button 
+                  className="btn-outline" 
+                  onClick={() => {
+                    if (previewContext) {
+                      // Load with deck context (full deck editing flow)
+                      onLoadToEditor(localPost, previewContext.deckId, previewContext.itemId, previewContext.deckTitle);
+                    } else {
+                      // Fallback to single post loading
+                      onLoadToEditor(localPost);
+                    }
+                  }}
+                  title={previewContext ? "Edit this post with full deck context" : "Load this post in editor"}
+                >
+                  {previewContext ? "Edit in Deck" : "Load in editor"}
                 </button>
               ) : null}
               <button className="btn-outline" onClick={onClose}>Close</button>

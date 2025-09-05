@@ -123,11 +123,43 @@ function normalizeMetrics(metrics) {
   };
 }
 
+// Simple shallow comparison for critical properties
+function hasSignificantChanges(src, result) {
+  if (!src || typeof src !== 'object') return true;
+  
+  // Check key properties that would affect rendering
+  const keys = ['platform', 'caption', 'videoSrc', 'muted', 'playing', 'activeIndex'];
+  for (const key of keys) {
+    if (src[key] !== result[key]) {
+      return true;
+    }
+  }
+  
+  // Special handling for type/isReel - these can auto-convert, so check the final intended state
+  const srcIsReel = src.isReel || src.type === "reel";
+  const resultIsReel = result.isReel || result.type === "reel";
+  if (srcIsReel !== resultIsReel) {
+    return true;
+  }
+  
+  // If both are reels or both are not reels, don't worry about exact type value
+  if (!srcIsReel && !resultIsReel && src.type !== result.type) {
+    return true;
+  }
+  
+  // Check media array
+  if (!isValidArray(src.media) || src.media.length !== result.media.length) {
+    return true;
+  }
+  if (src.media.some((item, i) => item !== result.media[i])) {
+    return true;
+  }
+  
+  return false;
+}
+
 // Optimized shape normalization with early returns
 export function ensurePostShape(p) {
-  // Early return for already valid posts
-  if (isValidPost(p)) return p;
-  
   const src = p && typeof p === "object" ? p : {};
   const result = { ...emptyPost };
 
@@ -189,7 +221,8 @@ export function ensurePostShape(p) {
     }
   }
 
-  return result;
+  // Return original object if no significant changes needed
+  return hasSignificantChanges(src, result) ? result : src;
 }
 
 // Hook for memoized post normalization

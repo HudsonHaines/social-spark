@@ -1,6 +1,6 @@
 // src/components/InstagramReel.jsx
 import React, { useState, useEffect } from 'react';
-import { Heart, MessageCircle, Send, Bookmark, MoreHorizontal, Music, Play } from 'lucide-react';
+import { Heart, MessageCircle, Send, Bookmark, MoreHorizontal, Music, Play, Pause, Volume2, VolumeX } from 'lucide-react';
 import { useView } from '../contexts/ViewContext';
 
 const cx = (...a) => a.filter(Boolean).join(" ");
@@ -15,6 +15,7 @@ const InstagramReelsIcon = () => (
 
 export default function InstagramReel({ 
   post, 
+  updatePost, // Add updatePost prop to update post state
   previewRef, 
   videoRef, 
   aspectClass, 
@@ -23,14 +24,15 @@ export default function InstagramReel({
   const { isMobile } = useView();
   const mediaCount = post.media?.length || 0;
   const currentIndex = post.activeIndex || 0;
-  const [isPlaying, setIsPlaying] = useState(false);
+  // Use post.playing instead of local state
+  const isPlaying = post.playing || false;
 
   useEffect(() => {
     const video = videoRef?.current;
-    if (!video) return;
+    if (!video || !updatePost) return;
 
-    const handlePlay = () => setIsPlaying(true);
-    const handlePause = () => setIsPlaying(false);
+    const handlePlay = () => updatePost(prev => prev.playing !== true ? { ...prev, playing: true } : prev);
+    const handlePause = () => updatePost(prev => prev.playing !== false ? { ...prev, playing: false } : prev);
 
     video.addEventListener('play', handlePlay);
     video.addEventListener('pause', handlePause);
@@ -39,7 +41,7 @@ export default function InstagramReel({
       video.removeEventListener('play', handlePlay);
       video.removeEventListener('pause', handlePause);
     };
-  }, [videoRef]);
+  }, [videoRef, updatePost]);
 
   return (
     <div 
@@ -52,27 +54,55 @@ export default function InstagramReel({
       }}
     >
       {/* Video Content */}
-      <div className="absolute inset-0">
+      <div 
+        className="absolute inset-0"
+        onClick={async (e) => {
+          e.stopPropagation();
+          const video = videoRef?.current;
+          console.log('🎬 InstagramReel wrapper click', { video, paused: video?.paused });
+          
+          if (video && video.paused) {
+            try {
+              await video.play();
+              updatePost && updatePost(prev => ({ ...prev, playing: true }));
+              console.log('✅ Video started playing');
+            } catch (error) {
+              console.error('❌ Video play failed:', error);
+            }
+          } else if (video) {
+            video.pause();
+            updatePost && updatePost(prev => ({ ...prev, playing: false }));
+            console.log('⏸️ Video paused');
+          }
+        }}
+      >
         {post.videoSrc ? (
           <video
             ref={videoRef}
             src={post.videoSrc}
             className="w-full h-full object-cover cursor-pointer"
             controls={false}
-            muted
+            muted={post.muted ?? true}
             loop
             playsInline
-            autoPlay
             poster={post.media?.[0]}
-            onClick={(e) => {
+            onClick={async (e) => {
               e.stopPropagation();
-              const video = e.target;
-              if (video.paused) {
-                video.play();
-                setIsPlaying(true);
-              } else {
+              const video = videoRef?.current || e.target;
+              console.log('🎬 InstagramReel video click', { video, paused: video?.paused });
+              
+              if (video && video.paused) {
+                try {
+                  await video.play();
+                  updatePost && updatePost(prev => ({ ...prev, playing: true }));
+                  console.log('✅ Video started playing');
+                } catch (error) {
+                  console.error('❌ Video play failed:', error);
+                }
+              } else if (video) {
                 video.pause();
-                setIsPlaying(false);
+                updatePost && updatePost(prev => ({ ...prev, playing: false }));
+                console.log('⏸️ Video paused');
               }
             }}
           />
@@ -90,6 +120,79 @@ export default function InstagramReel({
                 📹
               </div>
               <div className="text-sm">Add Reel video</div>
+            </div>
+          </div>
+        )}
+        
+        {/* Center Play Button - Always visible when paused */}
+        {mode === "create" && post.videoSrc && !isPlaying && (
+          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                const video = videoRef?.current;
+                if (video) {
+                  video.play();
+                  updatePost && updatePost(prev => ({ ...prev, playing: true }));
+                }
+              }}
+              className="flex items-center justify-center w-16 h-16 bg-black/60 hover:bg-black/80 rounded-full transition-colors pointer-events-auto backdrop-blur-sm"
+              title="Play"
+            >
+              <Play className="w-8 h-8 text-white ml-1" />
+            </button>
+          </div>
+        )}
+
+        {/* Video Controls Overlay - Only show in create mode */}
+        {mode === "create" && post.videoSrc && (
+          <div className="absolute inset-0 flex items-center justify-center opacity-0 hover:opacity-100 transition-opacity duration-300 pointer-events-none">
+            <div className="flex items-center gap-4 bg-black/60 backdrop-blur-sm rounded-full px-4 py-2 pointer-events-auto">
+              {/* Play/Pause Button */}
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  const video = videoRef?.current;
+                  if (video && updatePost) {
+                    if (video.paused) {
+                      video.play();
+                      updatePost(prev => ({ ...prev, playing: true }));
+                    } else {
+                      video.pause();
+                      updatePost(prev => ({ ...prev, playing: false }));
+                    }
+                  }
+                }}
+                className="flex items-center justify-center w-10 h-10 bg-white/20 hover:bg-white/30 rounded-full transition-colors"
+                title={isPlaying ? "Pause" : "Play"}
+              >
+                {isPlaying ? (
+                  <Pause className="w-5 h-5 text-white" />
+                ) : (
+                  <Play className="w-5 h-5 text-white ml-0.5" />
+                )}
+              </button>
+              
+              {/* Mute/Unmute Button */}
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  const video = videoRef?.current;
+                  if (video && updatePost) {
+                    const newMuted = !post.muted;
+                    video.muted = newMuted;
+                    updatePost(prev => ({ ...prev, muted: newMuted }));
+                  }
+                }}
+                className="flex items-center justify-center w-10 h-10 bg-white/20 hover:bg-white/30 rounded-full transition-colors"
+                title={post.muted ? "Unmute" : "Mute"}
+              >
+                {post.muted ? (
+                  <VolumeX className="w-5 h-5 text-white" />
+                ) : (
+                  <Volume2 className="w-5 h-5 text-white" />
+                )}
+              </button>
             </div>
           </div>
         )}
@@ -211,22 +314,8 @@ export default function InstagramReel({
         </div>
         )}
 
-        {/* Play button overlay when paused */}
-        {!isPlaying && (
-          <div className="absolute inset-0 flex items-center justify-center">
-            <div className="w-16 h-16 bg-black/40 backdrop-blur-sm rounded-full flex items-center justify-center opacity-80">
-              <Play size={24} className="text-white ml-1" fill="white" />
-            </div>
-          </div>
-        )}
 
-        {/* CSS for animations */}
-        <style jsx>{`
-          @keyframes spin {
-            from { transform: rotate(0deg); }
-            to { transform: rotate(360deg); }
-          }
-        `}</style>
+        {/* CSS for animations moved to global CSS */}
       </div>
     </div>
   );

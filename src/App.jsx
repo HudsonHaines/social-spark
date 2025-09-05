@@ -22,6 +22,7 @@ import EditorPresentMode from "./components/EditorPresentMode";
 
 import { emptyPost, ensurePostShape } from "./data/postShape";
 import { useExportStability } from "./hooks/useExportStability"; // FIXED: Use the hook
+import { useUndoRedo } from "./hooks/useUndoRedo";
 import {
   listDecks,
   createDeck,
@@ -81,9 +82,16 @@ const compressForDatabase = async (dataURL) => {
 const uid = () => Math.random().toString(36).slice(2, 10);
 
 export default function App() {
-  // Core editor state
+  // Core editor state (undo/redo temporarily disabled)
   const [post, setPost] = useState(() => ensurePostShape(emptyPost));
+  const undoPost = () => {};
+  const redoPost = () => {};
+  const canUndo = false;
+  const canRedo = false;
+  const resetPostHistory = () => {};
+  
   const [localDeck, setLocalDeck] = useState([]);
+  const [deckBrand, setDeckBrand] = useState(null); // Brand applied to all posts in deck
   const [showDeckStrip, setShowDeckStrip] = useState(false);
   const [lastSaved, setLastSaved] = useState(null);
   const [deckRefreshTrigger, setDeckRefreshTrigger] = useState(0);
@@ -125,12 +133,20 @@ export default function App() {
   const previewRef = useRef(null);
   const videoRef = useRef(null);
 
-  // Export stability hook
-  const { isExporting, imagesReady, exportAsPng, attachNode } = useExportStability();
+  // Export functionality will be provided by RightPreview component
+  const [isExporting, setIsExporting] = useState(false);
+  const [imagesReady, setImagesReady] = useState(true);
 
+  // Update images ready state from preview ref
   useEffect(() => {
-    attachNode(previewRef.current);
-  }, [attachNode]);
+    const interval = setInterval(() => {
+      if (previewRef.current?.imagesReady !== undefined) {
+        setImagesReady(previewRef.current.imagesReady);
+      }
+    }, 100);
+    
+    return () => clearInterval(interval);
+  }, []);
 
   // Auth state (simplified)
   const [userId, setUserId] = useState(null);
@@ -153,8 +169,9 @@ export default function App() {
   // Post updater with normalization
   const updatePost = useCallback((patchOrFn) => {
     setPost((p) => {
+      const currentPost = ensurePostShape(p);
       const next =
-        typeof patchOrFn === "function" ? patchOrFn(ensurePostShape(p)) : { ...p, ...patchOrFn };
+        typeof patchOrFn === "function" ? patchOrFn(currentPost) : { ...currentPost, ...patchOrFn };
       return ensurePostShape(next);
     });
     // Mark as having unsaved changes when editing from a deck
@@ -207,7 +224,7 @@ export default function App() {
       )
     );
 
-    setPost((p) => {
+    updatePost((p) => {
       const prev = ensurePostShape(p);
       const media = [...(prev.media || []), ...datas].slice(0, 5);
       const nextType = prev.type === "video" ? "single" : media.length > 1 ? "carousel" : "single";
@@ -220,7 +237,7 @@ export default function App() {
         videoSrc: "",
       });
     });
-  }, []);
+  }, [updatePost]);
 
   const processVideoFile = useCallback(async (file) => {
     if (!file) return;
@@ -230,15 +247,15 @@ export default function App() {
       reader.onerror = rej;
       reader.readAsDataURL(file);
     });
-    setPost((p) => ensurePostShape({ ...p, videoSrc: data, type: "video" }));
-  }, []);
+    updatePost((p) => ensurePostShape({ ...p, videoSrc: data, type: "video" }));
+  }, [updatePost]);
 
   const removeVideo = useCallback(() => {
-    setPost((p) => ensurePostShape({ ...p, videoSrc: "", type: "single" }));
-  }, []);
+    updatePost((p) => ensurePostShape({ ...p, videoSrc: "", type: "single" }));
+  }, [updatePost]);
 
   const removeImageAt = useCallback((idx) => {
-    setPost((p) => {
+    updatePost((p) => {
       const prev = ensurePostShape(p);
       const media = (prev.media || []).slice();
       if (idx < 0 || idx >= media.length) return prev;
@@ -255,7 +272,7 @@ export default function App() {
         activeIndex: nextActive,
       });
     });
-  }, []);
+  }, [updatePost]);
 
   // Drag and drop handler
   const onDrop = useCallback(
@@ -285,7 +302,8 @@ export default function App() {
   }, []);
 
   // Local deck operations
-  const addToDeck = useCallback(
+  // Add current post to deck (save/update existing)
+  const addCurrentToDeck = useCallback(
     async (p) => {
       setShowDeckStrip(true); // Also show deck strip when adding posts
       
@@ -308,15 +326,109 @@ export default function App() {
         }
       }
       
+      // Check if the current post matches an existing deck item by comparing IDs or content
+      const existingItemIndex = localDeck.findIndex(item => {
+        // First try ID match
+        if (processedPost.id && item.id === processedPost.id) {
+          return true;
+        }
+        // Then try exact post reference match
+        if (item.post === post) {
+          return true;
+        }
+        return false;
+      });
+      
+      if (existingItemIndex !== -1) {
+        // Update existing item
+        setLocalDeck((d) => {
+          const newDeck = [...d];
+          newDeck[existingItemIndex] = {
+            ...newDeck[existingItemIndex],
+            post: processedPost,
+            updatedAt: Date.now()
+          };
+          return newDeck;
+        });
+        console.log('✅ Updated existing deck item');
+        return;
+      }
+      
+      // Create new item with ID that will be preserved
+      const newItemId = uid();
       const item = {
-        id: uid(),
+        id: newItemId,
         createdAt: Date.now(),
-        post: processedPost,
+        post: { ...processedPost, id: newItemId },
       };
       setLocalDeck((d) => [item, ...d]);
+      console.log('✅ Created new deck item with ID:', newItemId);
     },
-    [post]
+    [post, localDeck]
   );
+
+  // Add new empty post to deck for editing
+  const addNewPostToDeck = useCallback(() => {
+    setShowDeckStrip(true);
+    
+    // Create a new empty post with a unique ID and inherit settings from current post or deck
+    const newItemId = uid();
+    const inheritedBrand = post.brand || deckBrand || emptyPost.brand;
+    const emptyPostWithId = { 
+      ...ensurePostShape(emptyPost), 
+      id: newItemId,
+      brand: inheritedBrand,
+      // Inherit platform-specific settings from current post
+      platform: post.platform || 'facebook',
+      isReel: post.isReel || false,
+      fbAspectRatio: post.fbAspectRatio || "1:1",
+      fbAdFormat: post.fbAdFormat || "feed-1:1",
+      fbAdType: post.fbAdType || "feed",
+      igAdFormat: post.igAdFormat || "feed-1:1",
+      igAdType: post.igAdType || "feed"
+    };
+    
+    const item = {
+      id: newItemId,
+      createdAt: Date.now(),
+      post: emptyPostWithId,
+    };
+    
+    setLocalDeck((d) => [item, ...d]);
+    
+    // Load this new empty post for editing
+    setPost(emptyPostWithId);
+    resetPostHistory(emptyPostWithId);
+    
+    console.log('✅ Created new empty deck item for editing with ID:', newItemId, 'with inherited brand:', inheritedBrand?.name, 'platform:', post.platform);
+  }, [post, deckBrand, setPost, resetPostHistory]);
+
+  // Set deck brand and optionally apply to all existing posts
+  const setDeckBrandAndApply = useCallback((brand, applyToExisting = true) => {
+    setDeckBrand(brand);
+    
+    if (applyToExisting && localDeck.length > 0) {
+      setLocalDeck((deck) => 
+        deck.map(item => ({
+          ...item,
+          post: { ...item.post, brand: brand },
+          updatedAt: Date.now()
+        }))
+      );
+      
+      // Also update current post if it has the same ID as a deck item
+      if (post.id && localDeck.some(item => item.id === post.id)) {
+        updatePost(prev => ({ ...prev, brand: brand }));
+      }
+      
+      console.log('✅ Applied brand to all', localDeck.length, 'existing deck posts:', brand?.name);
+    }
+    
+    console.log('✅ Set deck brand:', brand?.name);
+  }, [localDeck, post.id, updatePost]);
+
+  // Legacy function for backward compatibility
+  const addToDeck = addCurrentToDeck;
 
   const duplicateToDeck = useCallback((id) => {
     setLocalDeck((d) => {
@@ -330,10 +442,17 @@ export default function App() {
   const loadFromDeck = useCallback((id) => {
     setLocalDeck((d) => {
       const it = d.find((x) => x.id === id);
-      if (it) setPost(ensurePostShape(it.post));
+      if (it) {
+        const loadedPost = ensurePostShape(it.post);
+        // Ensure the post has the same ID as the deck item for proper updating
+        loadedPost.id = id;
+        setPost(loadedPost);
+        // Reset undo/redo history when loading a different post
+        resetPostHistory(loadedPost);
+      }
       return d;
     });
-  }, []);
+  }, [setPost, resetPostHistory]);
 
   const deleteFromDeck = useCallback((id) => {
     setLocalDeck((d) => d.filter((x) => x.id !== id));
@@ -627,11 +746,29 @@ export default function App() {
         return;
       }
       
+      // Cmd/Ctrl + Z for undo
+      if ((e.metaKey || e.ctrlKey) && e.key === 'z' && !e.shiftKey) {
+        e.preventDefault();
+        if (canUndo) {
+          undoPost();
+        }
+        return;
+      }
+      
+      // Cmd/Ctrl + Shift + Z or Cmd/Ctrl + Y for redo
+      if ((e.metaKey || e.ctrlKey) && ((e.key === 'z' && e.shiftKey) || e.key === 'y')) {
+        e.preventDefault();
+        if (canRedo) {
+          redoPost();
+        }
+        return;
+      }
+      
       // Don't trigger navigation shortcuts when typing in input fields
       if (isEditableElement) return;
       
-      // Arrow keys for deck navigation (only when editing from deck)
-      if (editingFromDeck?.deckId && localDeck.length > 0) {
+      // Arrow keys for deck navigation (both local deck building and saved deck editing)
+      if (localDeck.length > 0 && (editingFromDeck?.deckId || showDeckStrip)) {
         const currentIndex = localDeck.findIndex(item => 
           item.post.id === post.id || JSON.stringify(item.post) === JSON.stringify(post)
         );
@@ -640,11 +777,13 @@ export default function App() {
           e.preventDefault();
           const prevItem = localDeck[currentIndex - 1];
           setPost(prevItem.post);
+          resetPostHistory(prevItem.post);
           showSuccessToast(`← Previous post (${currentIndex}/${localDeck.length})`);
         } else if (e.key === 'ArrowRight' && currentIndex < localDeck.length - 1) {
           e.preventDefault();
           const nextItem = localDeck[currentIndex + 1];
           setPost(nextItem.post);
+          resetPostHistory(nextItem.post);
           showSuccessToast(`Next post → (${currentIndex + 2}/${localDeck.length})`);
         }
       }
@@ -652,7 +791,21 @@ export default function App() {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [editingFromDeck, hasUnsavedChanges, updateInDeck, localDeck, post, setPost, showSuccessToast]);
+  }, [editingFromDeck, hasUnsavedChanges, updateInDeck, localDeck, post, setPost, resetPostHistory, showSuccessToast, canUndo, canRedo, undoPost, redoPost]);
+
+  // Exit warnings for unsaved changes
+  useEffect(() => {
+    const handleBeforeUnload = (e) => {
+      if (hasUnsavedChanges || localDeck.some(item => item.updatedAt && (!item.savedAt || item.updatedAt > item.savedAt))) {
+        e.preventDefault();
+        e.returnValue = 'You have unsaved changes. Are you sure you want to leave?';
+        return 'You have unsaved changes. Are you sure you want to leave?';
+      }
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [hasUnsavedChanges, localDeck]);
 
   const saveToDeck = useCallback(
     async ({ deckId } = {}) => {
@@ -729,28 +882,41 @@ export default function App() {
 
   // Export handler
   const handleExportPNG = useCallback(async () => {
-    try {
-      await exportAsPng(previewRef);
-    } catch (err) {
-      alert("PNG export failed. Check console for details.");
+    console.log("🖼️ Export PNG clicked", { 
+      previewRefExists: !!previewRef.current,
+      exportFnExists: !!previewRef.current?.exportAsPng,
+      previewRefKeys: previewRef.current ? Object.keys(previewRef.current) : 'no ref',
+      previewRefValues: previewRef.current,
+      isDOM: previewRef.current instanceof HTMLElement,
+      previewRefType: typeof previewRef.current
+    });
+    
+    if (!previewRef.current?.exportAsPng) {
+      console.error("Export function not available");
+      alert("Export function not available. Please try again.");
+      return;
     }
-  }, [exportAsPng]);
+    
+    setIsExporting(true);
+    console.log("🖼️ Starting PNG export...");
+    try {
+      const result = await previewRef.current.exportAsPng();
+      console.log("🖼️ Export completed successfully:", result);
+    } catch (err) {
+      console.error("PNG export failed:", err);
+      alert("PNG export failed. Check console for details.");
+    } finally {
+      setIsExporting(false);
+      console.log("🖼️ Export process finished");
+    }
+  }, []);
 
 
   return (
     <Fragment>
       <AppShell
         user={authenticatedUser}
-        showDeckStrip={(() => {
-          const shouldShow = appState.page === "editor" && (showDeckStrip || localDeck.length > 0);
-          console.log('🎪 DeckStrip visibility:', { 
-            page: appState.page, 
-            showDeckStrip, 
-            localDeckLength: localDeck.length, 
-            shouldShow 
-          });
-          return shouldShow;
-        })()}
+        showDeckStrip={appState.page === "editor" && (showDeckStrip || localDeck.length > 0)}
         topBarProps={{
           user: authenticatedUser,
           onOpenMenu: () => setUiState(prev => ({ ...prev, menuOpen: true })),
@@ -759,7 +925,8 @@ export default function App() {
           deck: localDeck,
           currentPost: post,
           onStartDeckBuilding: startDeckBuilding,
-          onAddToDeck: addToDeck,
+          onAddToDeck: addCurrentToDeck,
+          onAddNewPost: addNewPostToDeck,
           onLoadFromDeck: loadFromDeck,
           onDeleteFromDeck: deleteFromDeck,
           onDuplicateToDeck: duplicateToDeck,
@@ -768,7 +935,10 @@ export default function App() {
           onStartNewDeck: () => {
             // Clear everything and start fresh
             setLocalDeck([]);
-            setPost(ensurePostShape(emptyPost));
+            setDeckBrand(null);
+            const freshPost = ensurePostShape(emptyPost);
+            setPost(freshPost);
+            resetPostHistory(freshPost);
             setEditingFromDeck({ deckId: null, itemId: null, version: 1, deckTitle: null });
             setHasUnsavedChanges(false);
             setShowDeckStrip(false);
@@ -1005,7 +1175,7 @@ export default function App() {
                   // Convert deck items to local deck format
                   const localDeckItems = deckItems.map(item => ({
                     id: item.id,
-                    post: item.post_json,
+                    post: ensurePostShape(item.post_json),
                     deckItemId: item.id // Keep reference to original deck item
                   }));
                   
@@ -1013,8 +1183,19 @@ export default function App() {
                   setLocalDeck(localDeckItems);
                   setShowDeckStrip(true);
                   
-                  // Set the clicked post as current
-                  setPost(post);
+                  // Set the clicked post as current, ensuring proper ID matching
+                  const normalizedPost = ensurePostShape(post);
+                  // Find the matching deck item to ensure ID consistency
+                  const matchingDeckItem = localDeckItems.find(item => item.deckItemId === itemId);
+                  if (matchingDeckItem) {
+                    // Use the post from the deck with consistent ID
+                    const postWithId = { ...matchingDeckItem.post, id: matchingDeckItem.id };
+                    setPost(postWithId);
+                    resetPostHistory(postWithId);
+                  } else {
+                    setPost(normalizedPost);
+                    resetPostHistory(normalizedPost);
+                  }
                   
                   // Track that we're editing from a deck
                   setEditingFromDeck({
@@ -1031,6 +1212,7 @@ export default function App() {
                   
                   // Fallback to original behavior
                   setPost(post);
+                  resetPostHistory(post);
                   setEditingFromDeck({
                     deckId: deckId,
                     itemId: itemId,
@@ -1054,6 +1236,9 @@ export default function App() {
               user={authenticatedUser}
               post={post}
               update={updatePost}
+              videoRef={videoRef}
+              showDeckStrip={showDeckStrip}
+              onSetDeckBrand={setDeckBrandAndApply}
               onDrop={onDrop}
               handleImageFiles={processImageFiles}
               handleVideoFile={processVideoFile}
@@ -1070,6 +1255,10 @@ export default function App() {
               onExportPNG={handleExportPNG}
               isExporting={isExporting}
               imagesReady={imagesReady}
+              onUndo={undoPost}
+              onRedo={redoPost}
+              canUndo={canUndo}
+              canRedo={canRedo}
             />
           )
         }
@@ -1080,10 +1269,10 @@ export default function App() {
               <RightPreview
                 ref={previewRef}
                 post={post}
-                setPost={setPost}
+                setPost={updatePost}
                 mode="create"
                 videoRef={videoRef}
-                showExport={false}
+                showExport={true}
               />
             )
         }

@@ -56,6 +56,7 @@ export default function DecksPage({
 
   const [previewOpen, setPreviewOpen] = useState(false);
   const [previewPost, setPreviewPost] = useState(null);
+  const [previewContext, setPreviewContext] = useState(null);
   
   // Share modal state
   const [shareModalOpen, setShareModalOpen] = useState(false);
@@ -383,8 +384,9 @@ export default function DecksPage({
     }
   }
 
-  function openPreview(pj) {
+  function openPreview(pj, deckId, itemId, deckTitle) {
     setPreviewPost(ensurePostShape(pj || {}));
+    setPreviewContext({ deckId, itemId, deckTitle });
     setPreviewOpen(true);
   }
 
@@ -702,7 +704,7 @@ export default function DecksPage({
                       
                       <div 
                         className="relative aspect-square bg-app-muted"
-                        onClick={() => openPreview(pj)}
+                        onClick={() => openPreview(pj, activeId, it.id, activeDeck?.title)}
                       >
                         {thumb ? (
                           (pj.type === "video" || pj.type === "reel" || pj.isReel) ? (
@@ -821,6 +823,7 @@ export default function DecksPage({
         open={previewOpen}
         onClose={() => setPreviewOpen(false)}
         post={previewPost}
+        previewContext={previewContext}
         onLoadToEditor={onLoadToEditor}
       />
       

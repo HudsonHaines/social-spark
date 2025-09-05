@@ -1,16 +1,44 @@
 // src/components/RightPreview.jsx
-import React, { forwardRef, useCallback, useEffect, useMemo } from "react";
+import React, { forwardRef, useCallback, useEffect, useMemo, useImperativeHandle, useRef } from "react";
 import { ensurePostShape, emptyPost } from "../data/postShape";
 import { useExportStability } from "../hooks/useExportStability";
-import { canPlayVideo, getVideoThumbnail } from "../data/videoUtils";
 import { useView } from "../contexts/ViewContext";
 import InstagramPost from "./InstagramPost";
 import InstagramReel from "./InstagramReel";
 import FacebookReel from "./FacebookReel";
+import SimpleInstagramReel from "./SimpleInstagramReel";
+import SimpleFacebookReel from "./SimpleFacebookReel";
 import MobileFrame from "./MobileFrame";
 import ViewToggle from "./ViewToggle";
 
 const cx = (...a) => a.filter(Boolean).join(" ");
+
+// Simple stable video component - only re-renders when videoSrc actually changes
+const StableVideo = React.memo(({ videoSrc, videoRef }) => {
+  console.log('🎬 StableVideo re-render - videoSrc:', videoSrc?.substring(0, 30) + '...');
+  
+  return (
+    <video
+      ref={videoRef}
+      src={videoSrc}
+      className="absolute inset-0 w-full h-full object-cover"
+      controls
+      muted
+      loop
+      playsInline
+      style={{ backgroundColor: 'black' }}
+    />
+  );
+}, (prevProps, nextProps) => {
+  // Only re-render if videoSrc actually changed
+  const srcChanged = prevProps.videoSrc !== nextProps.videoSrc;
+  if (srcChanged) {
+    console.log('🎬 StableVideo videoSrc changed, allowing re-render');
+  } else {
+    console.log('🎬 StableVideo props unchanged, preventing re-render');
+  }
+  return !srcChanged; // return true to prevent re-render
+});
 
 const RightPreview = forwardRef(function RightPreview(
   {
@@ -25,8 +53,20 @@ const RightPreview = forwardRef(function RightPreview(
   },
   previewRef
 ) {
+  // RightPreview will re-render on post changes, but StableVideo won't remount
+
+  // Create a separate ref for the exportable content
+  const exportRef = useRef(null);
   const { isMobile } = useView();
-  const normalizedPost = useMemo(() => ensurePostShape(post || {}), [post]);
+  const normalizedPost = useMemo(() => {
+    const result = ensurePostShape(post || {});
+    return result;
+  }, [post]);
+  
+  // Memoize updatePost function to prevent infinite re-renders
+  const updatePost = useCallback((updates) => {
+    setPost(prev => typeof updates === 'function' ? updates(prev) : { ...prev, ...updates });
+  }, [setPost]);
   const mediaCount = normalizedPost.media?.length || 0;
   const currentIndex = normalizedPost.activeIndex || 0;
 
@@ -52,31 +92,17 @@ const RightPreview = forwardRef(function RightPreview(
 
   // Normalize aspect ratio for consistent presentation sizing
   const normalizedAspectClass = useMemo(() => {
-    console.log('🔧 RightPreview normalizedAspectClass debug:', {
-      mode,
-      hasVideoSrc: !!normalizedPost.videoSrc,
-      type: normalizedPost.type,
-      platform: normalizedPost.platform,
-      platformIsInstagram: normalizedPost.platform === "instagram",
-      originalAspectClass: aspectClass,
-      videoSrcPrefix: normalizedPost.videoSrc?.substring(0, 30) + '...'
-    });
-    
     // In present mode, make everything uniform for consistent presentation
     if (mode === "present") {
-      console.log('📺 Present mode: using square aspect for all posts to ensure uniform sizing');
       return "aspect-square";
     }
     
     // In create mode, normalize videos to platform standards
     if (normalizedPost.type === "video" || normalizedPost.videoSrc) {
       // Both Instagram and Facebook feed videos are typically square (1:1)
-      const result = "aspect-square";
-      console.log(`✅ Video detected, platform: "${normalizedPost.platform}", using square aspect for platform consistency`);
-      return result;
+      return "aspect-square";
     }
     
-    console.log('📝 Create mode non-video, using original aspect:', aspectClass);
     return aspectClass;
   }, [mode, normalizedPost.type, normalizedPost.videoSrc, normalizedPost.platform, aspectClass]);
 
@@ -123,28 +149,24 @@ const RightPreview = forwardRef(function RightPreview(
     attachNode: null,
   };
 
+  // Removed excessive logging to prevent render loops
+
   // Keep currentIndex in range when media changes
   useEffect(() => {
     if (currentIndex > Math.max(0, mediaCount - 1)) {
-      setPost((prev) => ({
-        ...ensurePostShape(prev),
-        activeIndex: Math.max(0, mediaCount - 1),
-      }));
+      updatePost({ activeIndex: Math.max(0, mediaCount - 1) });
     }
-  }, [currentIndex, mediaCount, setPost]);
+  }, [currentIndex, mediaCount, updatePost]);
 
   // Consolidated carousel navigation
   const navigateCarousel = useCallback((direction) => {
-    setPost((prev) => {
-      const current = ensurePostShape(prev);
-      const count = current.media?.length || 0;
-      if (count < 2) return current;
-      const nextIndex = direction === 'prev' 
-        ? ((current.activeIndex || 0) - 1 + count) % count
-        : ((current.activeIndex || 0) + 1) % count;
-      return { ...current, activeIndex: nextIndex };
-    });
-  }, [setPost]);
+    const count = normalizedPost.media?.length || 0;
+    if (count < 2) return;
+    const nextIndex = direction === 'prev' 
+      ? ((normalizedPost.activeIndex || 0) - 1 + count) % count
+      : ((normalizedPost.activeIndex || 0) + 1) % count;
+    updatePost({ activeIndex: nextIndex });
+  }, [normalizedPost.media?.length, normalizedPost.activeIndex, updatePost]);
 
   const handlePrevious = useCallback(() => navigateCarousel('prev'), [navigateCarousel]);
   const handleNext = useCallback(() => navigateCarousel('next'), [navigateCarousel]);
@@ -153,33 +175,44 @@ const RightPreview = forwardRef(function RightPreview(
   // Carousel navigation is now click-only with visible arrow buttons
 
   useEffect(() => {
-    if (attachNode && previewRef?.current) {
-      attachNode(previewRef.current);
+    if (attachNode && exportRef?.current) {
+      attachNode(exportRef.current);
     }
-  }, [attachNode, previewRef, normalizedPost.media, normalizedPost.videoSrc, normalizedPost.platform, currentIndex]);
+  }, [attachNode, normalizedPost.media, normalizedPost.videoSrc, normalizedPost.platform, currentIndex]);
 
-  // Extract post content to a separate component
-  function PostContent() {
+  // Expose export function to parent component
+  useImperativeHandle(previewRef, () => ({
+    exportAsPng: async (filename) => {
+      if (stableExport && exportRef?.current) {
+        return await stableExport(exportRef, filename);
+      }
+      throw new Error("Export function not available");
+    },
+    imagesReady,
+    isExporting
+  }), [stableExport, imagesReady, isExporting]);
+
+  // Memoize the entire PostContent to prevent video remounting
+  const PostContent = useMemo(() => {
+    console.log('🔄 PostContent useMemo - creating new content');
+    
     return (
       <div 
+        ref={exportRef}
         className="mx-auto flex-shrink-0" 
-        style={isMobile ? { width: '100%', maxWidth: 'none' } : wrapperStyle}
+        style={isMobile ? { width: '100%', maxWidth: 'none', minHeight: '200px', position: 'relative' } : { ...wrapperStyle, minHeight: '200px', position: 'relative' }}
       >
             {normalizedPost.isReel || normalizedPost.type === "reel" ? (
               normalizedPost.platform === "instagram" ? (
-                <InstagramReel
+                <SimpleInstagramReel
                   post={normalizedPost}
-                  previewRef={previewRef}
                   videoRef={videoRef}
-                  aspectClass={normalizedAspectClass}
                   mode={mode}
                 />
               ) : (
-                <FacebookReel
+                <SimpleFacebookReel
                   post={normalizedPost}
-                  previewRef={previewRef}
                   videoRef={videoRef}
-                  aspectClass={normalizedAspectClass}
                   mode={mode}
                 />
               )
@@ -192,7 +225,7 @@ const RightPreview = forwardRef(function RightPreview(
                 mode={mode}
               />
             ) : (
-            <div ref={previewRef} className={cx(
+            <div className={cx(
               "bg-white overflow-hidden w-full",
               normalizedPost.platform === "facebook" ? "fb-post-container" : "card p-0",
               isMobile ? "border-0 shadow-none rounded-none" : ""
@@ -253,57 +286,10 @@ const RightPreview = forwardRef(function RightPreview(
                   )}
                 >
                   {normalizedPost.type === "video" && normalizedPost.videoSrc ? (
-                    canPlayVideo(normalizedPost.videoSrc) ? (
-                      <video
-                        ref={videoRef}
-                        src={normalizedPost.videoSrc}
-                        className="absolute inset-0 w-full h-full object-cover"
-                        controls
-                        muted
-                        loop
-                        playsInline
-                        onClick={(e) => {
-                          if (e.target.paused) {
-                            e.target.play();
-                          } else {
-                            e.target.pause();
-                          }
-                        }}
-                        onError={(e) => {
-                          console.error('RightPreview: Video failed to load:', normalizedPost.videoSrc);
-                        }}
+                      <StableVideo 
+                        videoSrc={normalizedPost.videoSrc}
+                        videoRef={videoRef}
                       />
-                    ) : (
-                      (() => {
-                        const thumbnail = getVideoThumbnail(normalizedPost);
-                        return (
-                          <div className="absolute inset-0 flex flex-col items-center justify-center text-gray-400">
-                            {thumbnail && thumbnail !== normalizedPost.videoSrc ? (
-                              <>
-                                <img
-                                  src={thumbnail}
-                                  alt="Video thumbnail"
-                                  className="absolute inset-0 w-full h-full object-cover"
-                                />
-                                <div className="relative z-10 bg-black/60 rounded-full p-4">
-                                  <svg className="w-8 h-8 text-white" fill="currentColor" viewBox="0 0 24 24">
-                                    <path d="M8 5v14l11-7z"/>
-                                  </svg>
-                                </div>
-                                <div className="relative z-10 text-white text-sm mt-2">Video unavailable</div>
-                              </>
-                            ) : (
-                              <>
-                                <svg className="w-12 h-12 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                                </svg>
-                                <div className="text-sm">Video unavailable</div>
-                              </>
-                            )}
-                          </div>
-                        );
-                      })()
-                    )
                   ) : mediaCount > 0 && normalizedPost.media[currentIndex] ? (
                     <img
                       src={normalizedPost.media[currentIndex]}
@@ -441,7 +427,27 @@ const RightPreview = forwardRef(function RightPreview(
             )}
           </div>
     );
-  }
+  }, [
+    // Core properties that affect rendering
+    normalizedPost.videoSrc,
+    normalizedPost.platform,
+    normalizedPost.isReel,
+    normalizedPost.type,
+    normalizedPost.media,
+    normalizedPost.activeIndex,
+    normalizedPost.brand?.profileSrc,
+    normalizedPost.brand?.name,
+    normalizedPost.caption, // Include caption for live updates
+    normalizedPost.link, // Include link data for live updates
+    normalizedPost.mediaMeta, // Include media meta for carousel cards
+    normalizedAspectClass,
+    mode,
+    videoRef,
+    isMobile,
+    wrapperStyle,
+    currentIndex,
+    mediaCount
+  ]);
 
   return (
     <div className={cx(
@@ -464,11 +470,11 @@ const RightPreview = forwardRef(function RightPreview(
                   ? "overflow-hidden" // Reels should fill the screen
                   : "overflow-y-auto"  // Regular posts can scroll
               )}>
-                <PostContent />
+                {PostContent}
               </div>
             </MobileFrame>
           ) : (
-            <PostContent />
+            PostContent
           )}
         </div>
       </div>

@@ -1,5 +1,5 @@
 // src/components/DeckStrip.jsx
-import React, { useRef, useEffect, memo, useState } from "react";
+import React, { useRef, useEffect, memo, useState, useMemo } from "react";
 import { 
   Plus, 
   Eye, 
@@ -11,9 +11,13 @@ import {
   ChevronRight,
   Save,
   X,
-  FileText
+  FileText,
+  Search,
+  Edit3,
+  Download
 } from "lucide-react";
 import { getVideoThumbnail, canPlayVideo } from "../data/videoUtils";
+import { useContextMenu } from "./ContextMenu";
 
 const cx = (...a) => a.filter(Boolean).join(" ");
 
@@ -22,6 +26,7 @@ const DeckStrip = memo(function DeckStrip({
   currentPost,
   onStartDeckBuilding,
   onAddToDeck,
+  onAddNewPost, // New prop for adding new empty post
   onLoadFromDeck,
   onDeleteFromDeck,
   onDuplicateToDeck,
@@ -42,10 +47,71 @@ const DeckStrip = memo(function DeckStrip({
   const [draggedIndex, setDraggedIndex] = useState(null);
   const [dragOverIndex, setDragOverIndex] = useState(null);
   const [showNewDeckModal, setShowNewDeckModal] = useState(false);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [showSearch, setShowSearch] = useState(false);
+  
+  // Context menu functionality
+  const { showContextMenu, ContextMenuComponent } = useContextMenu();
 
-  // Auto-scroll to end when new items are added
+  // Calculate current post position in deck
+  const currentPostIndex = deck.findIndex(item => 
+    currentPost?.id && (item.id === currentPost.id || item.post.id === currentPost.id)
+  );
+  
+  // Calculate deck analytics
+  const deckStats = useMemo(() => {
+    const fbPosts = deck.filter(item => item.post?.platform === 'facebook').length;
+    const igPosts = deck.filter(item => item.post?.platform === 'instagram').length;
+    const reelsPosts = deck.filter(item => item.post?.isReel).length;
+    const postsWithMedia = deck.filter(item => 
+      item.post?.media?.length > 0 || item.post?.videoSrc
+    ).length;
+    const emptyPosts = deck.filter(item => {
+      const post = item.post;
+      return (!post?.media?.length && !post?.videoSrc && 
+              (!post?.caption || post.caption.trim() === "" || post.caption === "Write your post copy here..."));
+    }).length;
+    
+    return { fbPosts, igPosts, reelsPosts, postsWithMedia, emptyPosts };
+  }, [deck]);
+
+  // Filter deck items based on search term
+  const filteredDeck = useMemo(() => {
+    if (!searchTerm.trim()) return deck;
+    
+    return deck.filter(item => {
+      const post = item.post;
+      const searchLower = searchTerm.toLowerCase();
+      
+      return (
+        post?.caption?.toLowerCase().includes(searchLower) ||
+        post?.brand?.name?.toLowerCase().includes(searchLower) ||
+        post?.platform?.toLowerCase().includes(searchLower)
+      );
+    });
+  }, [deck, searchTerm]);
+
+  // Auto-scroll to the active post when loaded from decks page
   useEffect(() => {
-    if (scrollRef.current && deck.length > 0) {
+    if (scrollRef.current && currentPostIndex >= 0 && deck.length > 0) {
+      const scrollContainer = scrollRef.current;
+      const activeCard = scrollContainer.children[currentPostIndex];
+      
+      if (activeCard) {
+        setTimeout(() => {
+          activeCard.scrollIntoView({
+            behavior: 'smooth',
+            block: 'nearest',
+            inline: 'center'
+          });
+        }, 100);
+      }
+    }
+  }, [currentPostIndex, deck.length]);
+
+  // Auto-scroll to end when new items are added (only if no active post)
+  useEffect(() => {
+    if (scrollRef.current && deck.length > 0 && currentPostIndex === -1) {
       const scrollContainer = scrollRef.current;
       // Smooth scroll to the rightmost item when deck changes
       setTimeout(() => {
@@ -55,7 +121,7 @@ const DeckStrip = memo(function DeckStrip({
         });
       }, 100);
     }
-  }, [deck.length]);
+  }, [deck.length, currentPostIndex]);
 
   const scrollLeft = () => {
     if (scrollRef.current) {
@@ -229,11 +295,50 @@ const DeckStrip = memo(function DeckStrip({
       <div className="flex items-center px-4 py-2 border-b border-gray-100">
         <div className="flex items-center gap-3 flex-1">
           <span className="text-sm font-medium text-gray-700">
-            {isEditingExistingDeck ? 'Editing Deck' : 'Deck Preview'}
+            {isEditingExistingDeck ? (
+              <>
+                Editing: <span className="text-blue-600">{currentDeckTitle}</span>
+              </>
+            ) : 'Deck Preview'}
           </span>
           <span className="text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full">
             {deck.length} post{deck.length === 1 ? '' : 's'}
           </span>
+          
+          {/* Current Post Indicator */}
+          {currentPostIndex >= 0 && (
+            <span className="text-xs text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full font-medium">
+              Post {currentPostIndex + 1} of {deck.length}
+            </span>
+          )}
+          
+          
+          {/* Deck Analytics */}
+          {deck.length > 0 && (
+            <div className="flex items-center gap-1 text-xs">
+              {deckStats.fbPosts > 0 && (
+                <span className="bg-blue-50 text-blue-700 px-2 py-0.5 rounded-full">
+                  FB: {deckStats.fbPosts}
+                </span>
+              )}
+              {deckStats.igPosts > 0 && (
+                <span className="bg-purple-50 text-purple-700 px-2 py-0.5 rounded-full">
+                  IG: {deckStats.igPosts}
+                </span>
+              )}
+              {deckStats.reelsPosts > 0 && (
+                <span className="bg-pink-50 text-pink-700 px-2 py-0.5 rounded-full">
+                  Reels: {deckStats.reelsPosts}
+                </span>
+              )}
+              {deckStats.emptyPosts > 0 && (
+                <span className="bg-red-50 text-red-700 px-2 py-0.5 rounded-full">
+                  Empty: {deckStats.emptyPosts}
+                </span>
+              )}
+            </div>
+          )}
+
           {lastSaved && (
             <span className="text-xs text-green-600 bg-green-50 px-2 py-0.5 rounded-full">
               Saved {new Date(lastSaved).toLocaleTimeString()}
@@ -241,6 +346,42 @@ const DeckStrip = memo(function DeckStrip({
           )}
         </div>
         <div className="flex items-center gap-2">
+          {/* Search */}
+          {deck.length > 3 && (
+            <div className="flex items-center">
+              {showSearch ? (
+                <div className="flex items-center bg-gray-50 rounded-lg px-2 py-1">
+                  <Search className="w-3 h-3 text-gray-400 mr-1" />
+                  <input
+                    type="text"
+                    placeholder="Search posts..."
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    onBlur={() => !searchTerm && setShowSearch(false)}
+                    autoFocus
+                    className="bg-transparent text-xs outline-none w-24"
+                  />
+                  {searchTerm && (
+                    <button
+                      onClick={() => setSearchTerm("")}
+                      className="text-gray-400 hover:text-gray-600 ml-1"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  )}
+                </div>
+              ) : (
+                <button
+                  onClick={() => setShowSearch(true)}
+                  className="flex items-center gap-1 px-2 py-1 bg-gray-100 text-gray-600 rounded-lg text-xs font-medium hover:bg-gray-200 transition-colors"
+                  title="Search posts"
+                >
+                  <Search className="w-3 h-3" />
+                </button>
+              )}
+            </div>
+          )}
+          
           {/* New Deck Button - only show when editing existing deck */}
           {isEditingExistingDeck && onStartNewDeck && (
             <button
@@ -254,11 +395,28 @@ const DeckStrip = memo(function DeckStrip({
           )}
           {onPreviewDeck && (
             <button
-              onClick={onPreviewDeck}
-              className="flex items-center gap-1 px-3 py-1 bg-purple-500 text-white rounded-lg text-xs font-medium hover:bg-purple-600 transition-colors"
+              onClick={() => {
+                if (deckStats.emptyPosts > 0) {
+                  const confirmed = window.confirm(
+                    `You have ${deckStats.emptyPosts} post${deckStats.emptyPosts === 1 ? '' : 's'} with missing content. Continue with preview anyway?`
+                  );
+                  if (!confirmed) return;
+                }
+                onPreviewDeck();
+              }}
+              className={`flex items-center gap-1 px-3 py-1 rounded-lg text-xs font-medium transition-colors ${
+                deckStats.emptyPosts > 0 
+                  ? 'bg-orange-500 hover:bg-orange-600 text-white' 
+                  : 'bg-purple-500 hover:bg-purple-600 text-white'
+              }`}
             >
               <Eye className="w-3 h-3" />
               Preview
+              {deckStats.emptyPosts > 0 && (
+                <span className="ml-1 bg-white/20 px-1 py-0.5 rounded-full text-[10px]">
+                  !
+                </span>
+              )}
             </button>
           )}
           <button
@@ -276,13 +434,32 @@ const DeckStrip = memo(function DeckStrip({
             <Plus className="w-3 h-3" />
             Add Current
           </button>
+          
+          {/* Duplicate Current Post Button */}
+          {currentPost && (
+            <button
+              onClick={() => {
+                // Create a duplicate of the current post
+                onAddToDeck({ 
+                  ...currentPost, 
+                  id: null, // Reset ID so it creates a new item
+                  caption: currentPost.caption + " (Copy)"
+                });
+              }}
+              className="flex items-center gap-1 px-3 py-1 bg-gray-500 text-white rounded-lg text-xs font-medium hover:bg-gray-600 transition-colors"
+              title="Duplicate current post"
+            >
+              <Copy className="w-3 h-3" />
+              Duplicate
+            </button>
+          )}
         </div>
       </div>
 
       {/* Scrollable Deck Strip */}
       <div className="relative">
         {/* Left Scroll Button */}
-        {deck.length > 4 && (
+        {filteredDeck.length > 4 && (
           <button
             onClick={scrollLeft}
             className="absolute left-0 top-1/2 -translate-y-1/2 z-10 bg-white/90 backdrop-blur-sm shadow-lg rounded-r-lg p-2 opacity-0 group-hover:opacity-100 transition-opacity"
@@ -292,7 +469,7 @@ const DeckStrip = memo(function DeckStrip({
         )}
 
         {/* Right Scroll Button */}
-        {deck.length > 4 && (
+        {filteredDeck.length > 4 && (
           <button
             onClick={scrollRight}
             className="absolute right-0 top-1/2 -translate-y-1/2 z-10 bg-white/90 backdrop-blur-sm shadow-lg rounded-l-lg p-2 opacity-0 group-hover:opacity-100 transition-opacity"
@@ -306,7 +483,7 @@ const DeckStrip = memo(function DeckStrip({
           ref={scrollRef}
           className="flex gap-2 px-4 py-3 overflow-x-auto scrollbar-hide"
         >
-          {deck.map((item, index) => (
+          {filteredDeck.map((item, index) => (
             <DeckItem
               key={item.id}
               item={item}
@@ -314,6 +491,37 @@ const DeckStrip = memo(function DeckStrip({
               onLoad={() => onLoadFromDeck(item.id)}
               onDelete={() => onDeleteFromDeck(item.id)}
               onDuplicate={() => onDuplicateToDeck(item.id)}
+              onContextMenu={(e) => {
+                const menuItems = [
+                  {
+                    key: 'load',
+                    label: 'Edit Post',
+                    icon: <Edit3 className="w-4 h-4" />,
+                    onClick: () => onLoadFromDeck(item.id)
+                  },
+                  {
+                    key: 'duplicate',
+                    label: 'Duplicate Post',
+                    icon: <Copy className="w-4 h-4" />,
+                    onClick: () => onDuplicateToDeck(item.id)
+                  },
+                  {
+                    type: 'separator'
+                  },
+                  {
+                    key: 'delete',
+                    label: 'Delete Post',
+                    icon: <Trash2 className="w-4 h-4" />,
+                    onClick: () => {
+                      if (window.confirm('Are you sure you want to delete this post from the deck?')) {
+                        onDeleteFromDeck(item.id);
+                      }
+                    },
+                    danger: true
+                  }
+                ];
+                showContextMenu(e, menuItems);
+              }}
               isActive={currentPost?.id === item.id}
               isDragged={draggedIndex === index}
               isDragOver={dragOverIndex === index}
@@ -327,7 +535,7 @@ const DeckStrip = memo(function DeckStrip({
           
           {/* Add New Item Button at End */}
           <button
-            onClick={onAddToDeck}
+            onClick={onAddNewPost || onAddToDeck}
             className="flex-shrink-0 w-32 h-24 border-2 border-dashed border-gray-300 rounded-lg flex flex-col items-center justify-center hover:border-blue-400 hover:bg-blue-50 transition-all group/add"
           >
             <Plus className="w-5 h-5 text-gray-400 group-hover/add:text-blue-500 mb-1" />
@@ -426,6 +634,9 @@ const DeckStrip = memo(function DeckStrip({
           </div>
         </div>
       )}
+      
+      {/* Context Menu */}
+      <ContextMenuComponent />
     </div>
   );
 });
@@ -436,6 +647,7 @@ const DeckItem = memo(function DeckItem({
   onLoad, 
   onDelete, 
   onDuplicate,
+  onContextMenu,
   isActive,
   isDragged,
   isDragOver,
@@ -447,6 +659,12 @@ const DeckItem = memo(function DeckItem({
 }) {
   const { post } = item;
   const hasMedia = post?.media?.length > 0 || post?.videoSrc;
+  
+  // Check if post has unsaved changes (basic heuristic: recently updated but not saved)
+  const hasUnsavedChanges = item.updatedAt && (!item.savedAt || item.updatedAt > item.savedAt);
+  
+  // Check if post is missing essential content
+  const missingContent = !hasMedia && (!post?.caption || post.caption.trim() === "" || post.caption === "Write your post copy here...");;
 
   return (
     <div
@@ -454,9 +672,11 @@ const DeckItem = memo(function DeckItem({
       className={cx(
         "relative flex-shrink-0 w-32 group/item transition-all",
         "cursor-move", // Change cursor to indicate draggable
-        isActive && "ring-2 ring-blue-500 rounded-lg",
+        isActive && "ring-2 ring-blue-500 rounded-lg shadow-lg", // Enhanced active state
         isDragged && "opacity-50 scale-95", // Visual feedback when being dragged
-        isDragOver && "ring-2 ring-green-400 ring-offset-2" // Visual feedback when drag target
+        isDragOver && "ring-2 ring-green-400 ring-offset-2", // Visual feedback when drag target
+        hasUnsavedChanges && !isActive && "ring-1 ring-orange-300", // Subtle indicator for unsaved changes
+        missingContent && "ring-1 ring-red-300" // Warning for missing content
       )}
       onDragStart={onDragStart}
       onDragOver={onDragOver}
@@ -464,6 +684,7 @@ const DeckItem = memo(function DeckItem({
       onDrop={onDrop}
       onDragEnd={onDragEnd}
       onClick={onLoad}
+      onContextMenu={onContextMenu}
     >
       {/* Thumbnail */}
       <div className="relative h-24 bg-gradient-to-br from-gray-100 to-gray-200 rounded-lg overflow-hidden border border-gray-200 hover:border-blue-300 transition-all">
@@ -542,6 +763,19 @@ const DeckItem = memo(function DeckItem({
             <div className="bg-orange-500 text-white text-[10px] font-medium rounded px-1.5 py-0.5 shadow-sm">
               ↻
             </div>
+          </div>
+        )}
+
+        {/* Status Indicators */}
+        {hasUnsavedChanges && (
+          <div className="absolute top-7 right-1">
+            <div className="w-2 h-2 bg-orange-500 rounded-full animate-pulse" title="Unsaved changes" />
+          </div>
+        )}
+        
+        {missingContent && (
+          <div className="absolute top-7 left-1">
+            <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse" title="Missing content" />
           </div>
         )}
 

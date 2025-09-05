@@ -71,6 +71,14 @@ function FoundationBar({ post, update, brands, onSelectBrand, openBrandManager }
       updates.igAdFormat = "reels-9:16";
       updates.fbAdType = "reels";
       updates.igAdType = "reels";
+    } else {
+      // Explicitly clear Reels mode for regular posts
+      updates.isReel = false;
+      // Reset to standard formats
+      updates.fbAspectRatio = "1:1";
+      updates.igAdFormat = "feed-1:1";
+      updates.fbAdType = "feed";
+      updates.igAdType = "feed";
     }
     
     update(updates);
@@ -198,6 +206,9 @@ const LeftPanel = memo(function LeftPanel(props) {
     user,
     post,
     update,
+    videoRef, // Video element ref for direct control
+    showDeckStrip, // Whether deck building is active
+    onSetDeckBrand, // Function to set deck brand
     onDrop,
     handleImageFiles,
     handleVideoFile,
@@ -269,7 +280,20 @@ const LeftPanel = memo(function LeftPanel(props) {
   const handlePickBrand = useCallback((idOrNull) => {
     const row = brandRows.find((r) => r.id === idOrNull) || null;
     syncPostBrandFromRow(row);
-  }, [brandRows, syncPostBrandFromRow]);
+    
+    // If we're building a deck, also set this as the deck brand
+    if (showDeckStrip && onSetDeckBrand && row) {
+      const deckBrandFormat = {
+        id: row.id,
+        name: row.fb_name || "",
+        username: row.ig_username || "",
+        profileSrc: post.platform === "facebook" ? row.fb_avatar_url || "" : row.ig_avatar_url || "",
+        verified: !!row.verified,
+      };
+      onSetDeckBrand(deckBrandFormat, false); // Don't apply to existing posts, just set for new ones
+      console.log('✅ Set deck brand from left panel:', deckBrandFormat.name);
+    }
+  }, [brandRows, syncPostBrandFromRow, showDeckStrip, onSetDeckBrand, post.platform]);
 
   // Image drag and drop handlers
   const handleImageDragStart = useCallback((e, index) => {
@@ -561,17 +585,24 @@ const LeftPanel = memo(function LeftPanel(props) {
 
             {/* Media Preview - Compact */}
             {post.type === "video" && post.videoSrc ? (
-              <div className="flex items-center justify-between p-3 bg-blue-50 rounded-lg border border-blue-200">
-                <div className="flex items-center gap-2">
-                  <VideoIcon className="w-4 h-4 text-blue-600" />
-                  <span className="text-sm font-medium text-blue-900">Video uploaded</span>
+              <div className="space-y-2 p-3 bg-blue-50 rounded-lg border border-blue-200">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <VideoIcon className="w-4 h-4 text-blue-600" />
+                    <span className="text-sm font-medium text-blue-900">Video uploaded</span>
+                    {post.isReel && (
+                      <div className="text-xs text-purple-600 bg-purple-100 px-2 py-1 rounded-full font-medium">
+                        Reel
+                      </div>
+                    )}
+                  </div>
+                  <button 
+                    className="text-xs text-red-600 hover:text-red-800 underline"
+                    onClick={clearVideo}
+                  >
+                    Remove
+                  </button>
                 </div>
-                <button 
-                  className="text-xs text-red-600 hover:text-red-800 underline"
-                  onClick={clearVideo}
-                >
-                  Remove
-                </button>
               </div>
             ) : post.media?.length ? (
               <div className="space-y-2">
@@ -690,7 +721,10 @@ const LeftPanel = memo(function LeftPanel(props) {
                       className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
                       placeholder="Headline"
                       value={post.link?.headline || ""}
-                      onChange={(e) => update({ link: { ...(post.link || {}), headline: e.target.value } })}
+                      onChange={(e) => {
+                        const newLink = { ...(post.link || {}), headline: e.target.value };
+                        update({ link: newLink });
+                      }}
                     />
                     <input
                       className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
