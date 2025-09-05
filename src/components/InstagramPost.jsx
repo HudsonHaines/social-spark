@@ -93,18 +93,10 @@ export default function InstagramPost({
 
   // Instagram videos should always be square regardless of original dimensions
   const normalizedAspectClass = useMemo(() => {
-    console.log('🔧 InstagramPost normalizedAspectClass debug:', {
-      hasVideoSrc: !!post.videoSrc,
-      type: post.type,
-      originalAspectClass: aspectClass,
-      videoSrcPrefix: post.videoSrc?.substring(0, 30) + '...'
-    });
     
     if (post.type === "video" || post.videoSrc) {
-      console.log('✅ Instagram video detected, forcing aspect-square');
       return "aspect-square";
     }
-    console.log('📝 Instagram non-video, using original aspect:', aspectClass);
     return aspectClass;
   }, [post.type, post.videoSrc, aspectClass]);
 

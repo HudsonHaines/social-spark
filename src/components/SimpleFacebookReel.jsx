@@ -4,7 +4,6 @@ import { useView } from '../contexts/ViewContext';
 
 export default function SimpleFacebookReel({ post, videoRef, mode = "create" }) {
   const { isMobile } = useView();
-  console.log('🎬 SimpleFacebookReel received videoRef:', videoRef);
   return (
     <div 
       className="bg-black w-full h-full relative overflow-hidden"

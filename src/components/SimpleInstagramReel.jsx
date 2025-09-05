@@ -4,7 +4,6 @@ import { useView } from '../contexts/ViewContext';
 
 export default function SimpleInstagramReel({ post, videoRef, mode = "create" }) {
   const { isMobile } = useView();
-  console.log('🎬 SimpleInstagramReel received videoRef:', videoRef);
   return (
     <div 
       className="bg-black w-full h-full relative overflow-hidden"

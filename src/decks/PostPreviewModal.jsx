@@ -9,7 +9,6 @@ export default function PostPreviewModal({ open, onClose, post, previewContext, 
   const [localPost, setLocalPost] = useState(() => ensurePostShape(post || {}));
   const previewRef = useRef(null);
   const videoRef = useRef(null); // Add videoRef for proper video controls
-  console.log('🎬 PostPreviewModal created videoRef:', videoRef);
 
   useEffect(() => {
     setLocalPost(ensurePostShape(post || {}));
@@ -50,7 +49,6 @@ export default function PostPreviewModal({ open, onClose, post, previewContext, 
 
           {/* Content area - no scroll to keep post fully visible */}
           <div className="p-4 flex-1 flex items-center justify-center">
-            {(() => { console.log('🎬 About to render RightPreview with videoRef:', videoRef); return null; })()}
             <RightPreview
               ref={previewRef}
               post={localPost}

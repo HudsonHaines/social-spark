@@ -5,7 +5,8 @@
       "Bash(npm install)",
       "Bash(npm run build:*)",
       "Bash(npm run lint)",
-      "Bash(grep:*)"
+      "Bash(grep:*)",
+      "Bash(find:*)"
     ],
     "deny": [],
     "ask": []

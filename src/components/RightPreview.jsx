@@ -53,7 +53,6 @@ const RightPreview = forwardRef(function RightPreview(
   },
   previewRef
 ) {
-  console.log('🎬 RightPreview received videoRef:', videoRef);
   // RightPreview will re-render on post changes, but StableVideo won't remount
 
   // Create a separate ref for the exportable content
@@ -195,7 +194,6 @@ const RightPreview = forwardRef(function RightPreview(
 
   // Memoize the entire PostContent to prevent video remounting
   const PostContent = useMemo(() => {
-    console.log('🔄 PostContent useMemo - creating new content');
     
     return (
       <div 

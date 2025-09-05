@@ -85,7 +85,6 @@ export default function DecksPage({
   );
 
   useEffect(() => {
-    console.log('📋 DecksPage: Loading decks, refreshTrigger =', refreshTrigger);
     let mounted = true;
     
     const loadDecks = async () => {
@@ -129,7 +128,6 @@ export default function DecksPage({
 
   // Load items effect
   useEffect(() => {
-    console.log('📦 DecksPage: Loading items, activeId =', activeId, 'refreshTrigger =', refreshTrigger);
     let mounted = true;
     
     // Clear selections when switching decks
@@ -150,7 +148,6 @@ export default function DecksPage({
       
       try {
         const rows = await listDeckItems(activeId);
-        console.log('📦 Fetched items for deck:', activeId, 'count:', rows.length, 'items:', rows.map(r => r.id));
         if (mounted) {
           setState(prev => ({
             ...prev,
@@ -158,7 +155,6 @@ export default function DecksPage({
             loading: { ...prev.loading, items: false },
             error: null
           }));
-          console.log('📦 State updated with new items, count:', rows.length);
         }
       } catch (error) {
         console.error('Load items error:', error);
@@ -737,7 +733,6 @@ export default function DecksPage({
                 <ul className="p-3 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                 {items.map((it) => {
                   const pj = ensurePostShape(it.post_json || {});
-                  console.log('🎨 Rendering item:', it.id, 'version:', pj.version, 'updatedAt:', pj.updatedAt);
                   const kind = 
                     pj.type === "reel" || pj.isReel
                       ? "reel"

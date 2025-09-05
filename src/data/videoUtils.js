@@ -41,16 +41,6 @@ export async function extractVideoThumbnail(videoDataURL, timeSeconds = 0.1) {
     
     const resolveWithPlaceholder = (reason) => {
       console.warn('❌ Video thumbnail extraction failed:', reason);
-      console.log('🔧 Debug info at failure:', {
-        videoSrc: video.src ? 'set' : 'not set',
-        readyState: video.readyState,
-        networkState: video.networkState,
-        currentTime: video.currentTime,
-        duration: video.duration,
-        videoWidth: video.videoWidth,
-        videoHeight: video.videoHeight,
-        error: video.error
-      });
       cleanup();
       resolve(createVideoPlaceholder(400, 300));
     };
@@ -102,12 +92,6 @@ export async function extractVideoThumbnail(videoDataURL, timeSeconds = 0.1) {
           canvas.width = Math.min(video.videoWidth, 800); // Max width 800px
           canvas.height = Math.min(video.videoHeight, 600); // Max height 600px
           
-          console.log('🎨 Canvas setup:', {
-            canvasWidth: canvas.width,
-            canvasHeight: canvas.height,
-            videoWidth: video.videoWidth,
-            videoHeight: video.videoHeight
-          });
           
           const ctx = canvas.getContext('2d');
           if (!ctx) {
@@ -176,21 +160,10 @@ export async function extractVideoThumbnail(videoDataURL, timeSeconds = 0.1) {
     
     video.onerror = (e) => {
       console.error('🚫 Video error during thumbnail extraction:', e);
-      console.log('🔧 Video error details:', {
-        error: video.error,
-        networkState: video.networkState,
-        readyState: video.readyState,
-        src: video.src ? 'set' : 'not set'
-      });
       resolveWithPlaceholder('Video failed to load');
     };
     
-    video.onloadstart = () => {
-      console.log('▶️ Video load started...');
-    };
-    
     video.onloadeddata = () => {
-      console.log('📦 Video data loaded');
     };
     
     // Set timeout for the entire process
