@@ -141,11 +141,13 @@ const RightPreview = forwardRef(function RightPreview(
     isExporting,
     imagesReady,
     exportAsPng: stableExport,
+    exportOriginalMedia,
     attachNode,
   } = useExportStability?.() || {
     isExporting: savingImg,
     imagesReady: true,
     exportAsPng: saveAsPng,
+    exportOriginalMedia: null,
     attachNode: null,
   };
 
@@ -180,17 +182,25 @@ const RightPreview = forwardRef(function RightPreview(
     }
   }, [attachNode, normalizedPost.media, normalizedPost.videoSrc, normalizedPost.platform, currentIndex]);
 
-  // Expose export function to parent component
+  // Expose export functions to parent component
   useImperativeHandle(previewRef, () => ({
     exportAsPng: async (filename) => {
+      // Use the new media export function instead of DOM capture
+      if (exportOriginalMedia) {
+        return await exportOriginalMedia(normalizedPost, filename);
+      }
+      // Fallback to legacy DOM export (currently disabled)
       if (stableExport && exportRef?.current) {
         return await stableExport(exportRef, filename);
       }
       throw new Error("Export function not available");
     },
+    exportOriginalMedia: exportOriginalMedia ? async (filename) => {
+      return await exportOriginalMedia(normalizedPost, filename);
+    } : null,
     imagesReady,
     isExporting
-  }), [stableExport, imagesReady, isExporting]);
+  }), [stableExport, exportOriginalMedia, normalizedPost, imagesReady, isExporting]);
 
   // Memoize the entire PostContent to prevent video remounting
   const PostContent = useMemo(() => {

@@ -82,169 +82,221 @@ export function useExportStability() {
     });
   }, [computeReady]);
 
-  const exportAsPng = useCallback(async (previewRef, filename = `mockup-${Date.now()}.png`) => {
-    console.log("🖼️ useExportStability: exportAsPng called", { 
-      previewRef: !!previewRef, 
-      nodeRef: !!nodeRef.current, 
-      filename,
-      isExporting 
-    });
+  const exportOriginalMedia = useCallback(async (post, filename) => {
+    console.log("📁 Exporting cropped media", { post, filename });
     
-    let node = previewRef?.current || nodeRef.current;
-    console.log("🖼️ useExportStability: node resolved", { 
-      nodeExists: !!node, 
-      nodeName: node?.tagName, 
-      nodeChildren: node?.children?.length,
-      nodeHTML: node?.innerHTML?.substring(0, 200),
-      nodeRect: node?.getBoundingClientRect(),
-      nodeStyles: node ? window.getComputedStyle(node).cssText?.substring(0, 200) : 'no node',
-      nodeClassList: node?.classList?.toString(),
-      nodeId: node?.id,
-      childElements: Array.from(node?.children || []).map(child => ({
-        tagName: child.tagName,
-        className: child.className,
-        rect: child.getBoundingClientRect()
-      }))
-    });
-    
-    if (!node || isExporting) {
-      console.log("🖼️ useExportStability: Early return", { noNode: !node, isExporting });
+    if (isExporting) {
+      console.log("📁 Export already in progress");
       return;
     }
 
-    console.log("🖼️ useExportStability: Starting export process...");
     setIsExporting(true);
+    
     try {
-      await waitForImages(node);
-      // Longer delay to ensure layout paints and fonts load
-      await new Promise(r => setTimeout(r, 500));
-
-      // Dynamic pixel ratio based on content size for better scaling
-      let rect = node.getBoundingClientRect();
-      console.log("🖼️ useExportStability: Node dimensions", { 
-        width: rect.width, 
-        height: rect.height, 
-        x: rect.x, 
-        y: rect.y,
-        visible: rect.width > 0 && rect.height > 0 
-      });
-
-      // Check if node has zero dimensions and try to find a better target
-      if (rect.width === 0 || rect.height === 0) {
-        console.warn("🖼️ Node has zero dimensions! Looking for child with dimensions...");
+      let mediaUrl = null;
+      let defaultFilename = `media-${Date.now()}`;
+      let shouldCrop = false;
+      let targetAspectRatio = null;
+      
+      // Determine what media to export and if it needs cropping
+      if (post.videoSrc) {
+        // Export video as-is (no cropping for videos for now)
+        mediaUrl = post.videoSrc;
+        defaultFilename = `video-${Date.now()}.mp4`;
+        shouldCrop = false;
+      } else if (post.media && post.media.length > 0) {
+        // Export current active image with platform-appropriate cropping
+        const activeIndex = post.activeIndex || 0;
+        mediaUrl = post.media[activeIndex] || post.media[0];
+        defaultFilename = `${post.platform}-image-${Date.now()}.jpg`;
+        shouldCrop = true;
         
-        // Try to find a child element with actual dimensions
-        const childWithDimensions = Array.from(node.children).find(child => {
-          const childRect = child.getBoundingClientRect();
-          console.log("🖼️ Checking child:", child.tagName, childRect);
-          return childRect.width > 0 && childRect.height > 0;
-        });
-        
-        if (childWithDimensions) {
-          console.log("🖼️ Found child with dimensions, using it instead:", childWithDimensions);
-          node = childWithDimensions;
-          rect = node.getBoundingClientRect();
-          console.log("🖼️ New target dimensions:", { width: rect.width, height: rect.height });
+        // Determine target aspect ratio based on platform and settings
+        if (post.isReel || post.type === "reel") {
+          targetAspectRatio = 9/16; // Reels are always vertical
+        } else if (post.platform === "instagram") {
+          // Instagram: use igAdFormat or default to square
+          const format = post.igAdFormat || "feed-1:1";
+          const ratio = format.split('-')[1] || "1:1";
+          targetAspectRatio = getAspectRatioValue(ratio);
         } else {
-          console.log("🖼️ No child with dimensions found. Searching entire document for visible post elements...");
-          
-          // Search for common post container classes
-          const selectors = [
-            '.fb-post-container',
-            '.card',
-            '.bg-white',
-            '[class*="post"]',
-            '[class*="facebook"]', 
-            '[class*="instagram"]'
-          ];
-          
-          for (const selector of selectors) {
-            const elements = document.querySelectorAll(selector);
-            console.log(`🖼️ Found ${elements.length} elements matching "${selector}"`);
-            
-            for (const element of elements) {
-              const elementRect = element.getBoundingClientRect();
-              console.log(`🖼️ Element ${selector}:`, { 
-                rect: elementRect, 
-                visible: elementRect.width > 0 && elementRect.height > 0,
-                className: element.className,
-                innerHTML: element.innerHTML?.substring(0, 100)
-              });
-              
-              if (elementRect.width > 100 && elementRect.height > 100) {
-                console.log("🖼️ Found viable element, switching to it:", element);
-                node = element;
-                // Recalculate rect for the new node
-                rect = node.getBoundingClientRect();
-                console.log("🖼️ Updated dimensions:", { width: rect.width, height: rect.height });
-                break;
-              }
-            }
-            if (node !== previewRef?.current && node !== nodeRef.current) break;
-          }
+          // Facebook: use fbAspectRatio
+          const ratio = post.fbAspectRatio || "1:1";
+          targetAspectRatio = getAspectRatioValue(ratio);
         }
       }
-
-      console.log("🖼️ useExportStability: Generating PNG data...");
       
-      // Try with better export settings for content capture
-      const targetWidth = rect.width > 0 ? rect.width : 400;
-      const targetHeight = rect.height > 0 ? rect.height : 400;
+      if (!mediaUrl) {
+        throw new Error("No media to export");
+      }
       
-      console.log("🖼️ Export target dimensions:", { targetWidth, targetHeight });
-      
-      const dataUrl = await htmlToImage.toPng(node, {
-        backgroundColor: "#ffffff",
-        pixelRatio: 2, // Higher pixel ratio for better quality
-        quality: 1,
-        cacheBust: true,
-        width: targetWidth,
-        height: targetHeight,
-        // Better font handling
-        skipFonts: false,
-        preferredFontFormat: 'woff2',
-        // Better image handling
-        useCORS: true,
-        allowTaint: true,
-        // Additional style handling
-        style: {
-          transform: 'scale(1)',
-          transformOrigin: 'top left',
-          fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
-        }
+      console.log("📁 Processing media:", { 
+        url: mediaUrl.substring(0, 50) + '...', 
+        shouldCrop, 
+        targetAspectRatio,
+        platform: post.platform 
       });
-
-      console.log("🖼️ useExportStability: PNG generated, size:", dataUrl.length, "bytes");
       
-      // More efficient download method
-      console.log("🖼️ useExportStability: Creating download link...");
-      const link = document.createElement("a");
-      link.href = dataUrl;
-      link.download = filename;
-      link.style.display = 'none';
+      if (shouldCrop && targetAspectRatio) {
+        // Crop the image to the target aspect ratio
+        const croppedBlob = await cropImageToAspectRatio(mediaUrl, targetAspectRatio);
+        const blobUrl = URL.createObjectURL(croppedBlob);
+        
+        const link = document.createElement("a");
+        link.href = blobUrl;
+        link.download = filename || defaultFilename;
+        link.style.display = 'none';
+        
+        document.body.appendChild(link);
+        link.click();
+        
+        setTimeout(() => {
+          document.body.removeChild(link);
+          URL.revokeObjectURL(blobUrl);
+        }, 100);
+        
+        console.log("📁 Cropped image export successful");
+        return true;
+      } else {
+        // Export as-is (videos or uncropped images)
+        try {
+          const link = document.createElement("a");
+          link.href = mediaUrl;
+          link.download = filename || defaultFilename;
+          link.style.display = 'none';
+          
+          document.body.appendChild(link);
+          link.click();
+          
+          setTimeout(() => {
+            document.body.removeChild(link);
+          }, 100);
+          
+          console.log("📁 Direct media export successful");
+          return true;
+        } catch (directDownloadError) {
+          console.log("📁 Direct download failed, trying fetch method...");
+          
+          // Fallback: fetch the file and create a blob
+          const response = await fetch(mediaUrl);
+          if (!response.ok) {
+            throw new Error(`Failed to fetch media: ${response.status}`);
+          }
+          
+          const blob = await response.blob();
+          const blobUrl = URL.createObjectURL(blob);
+          
+          const link = document.createElement("a");
+          link.href = blobUrl;
+          link.download = filename || defaultFilename;
+          link.style.display = 'none';
+          
+          document.body.appendChild(link);
+          link.click();
+          
+          setTimeout(() => {
+            document.body.removeChild(link);
+            URL.revokeObjectURL(blobUrl);
+          }, 100);
+          
+          console.log("📁 Fetch-based media export successful");
+          return true;
+        }
+      }
       
-      document.body.appendChild(link);
-      console.log("🖼️ useExportStability: Triggering download...");
-      link.click();
-      
-      // Cleanup with small delay to ensure download starts
-      setTimeout(() => {
-        console.log("🖼️ useExportStability: Cleaning up download link...");
-        document.body.removeChild(link);
-        // Revoke data URL to free memory
-        URL.revokeObjectURL(dataUrl);
-      }, 100);
-      
-      return true;
     } catch (err) {
-      console.error("PNG export failed:", err);
-      throw new Error(`Export failed: ${err.message}`);
+      console.error("📁 Media export failed:", err);
+      throw new Error(`Media export failed: ${err.message}`);
     } finally {
       setIsExporting(false);
-      // refresh readiness in case images changed
-      setImagesReady(computeReady(nodeRef.current));
     }
-  }, [isExporting, computeReady]);
+  }, [isExporting]);
+
+  // Helper function to convert aspect ratio strings to numbers
+  const getAspectRatioValue = (ratioString) => {
+    switch (ratioString) {
+      case "1:1": return 1;
+      case "4:5": return 4/5;
+      case "9:16": return 9/16;
+      case "16:9": return 16/9;
+      case "1.91:1": return 1.91;
+      default: return 1; // Default to square
+    }
+  };
+
+  // Helper function to crop image to target aspect ratio
+  const cropImageToAspectRatio = async (imageUrl, targetAspectRatio) => {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      img.crossOrigin = "anonymous";
+      
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+        
+        const sourceAspectRatio = img.width / img.height;
+        let sourceX = 0, sourceY = 0, sourceWidth = img.width, sourceHeight = img.height;
+        
+        // Calculate crop dimensions to match target aspect ratio
+        if (sourceAspectRatio > targetAspectRatio) {
+          // Source is wider than target, crop width
+          sourceWidth = img.height * targetAspectRatio;
+          sourceX = (img.width - sourceWidth) / 2;
+        } else if (sourceAspectRatio < targetAspectRatio) {
+          // Source is taller than target, crop height
+          sourceHeight = img.width / targetAspectRatio;
+          sourceY = (img.height - sourceHeight) / 2;
+        }
+        
+        // Set canvas size (use a reasonable resolution)
+        const maxSize = 1080;
+        let canvasWidth, canvasHeight;
+        
+        if (targetAspectRatio > 1) {
+          canvasWidth = maxSize;
+          canvasHeight = maxSize / targetAspectRatio;
+        } else {
+          canvasHeight = maxSize;
+          canvasWidth = maxSize * targetAspectRatio;
+        }
+        
+        canvas.width = canvasWidth;
+        canvas.height = canvasHeight;
+        
+        // Draw the cropped image
+        ctx.drawImage(
+          img, 
+          sourceX, sourceY, sourceWidth, sourceHeight,  // Source crop
+          0, 0, canvasWidth, canvasHeight               // Destination
+        );
+        
+        // Convert to blob
+        canvas.toBlob((blob) => {
+          if (blob) {
+            resolve(blob);
+          } else {
+            reject(new Error('Failed to create image blob'));
+          }
+        }, 'image/jpeg', 0.9);
+      };
+      
+      img.onerror = () => {
+        reject(new Error('Failed to load image for cropping'));
+      };
+      
+      img.src = imageUrl;
+    });
+  };
+
+  // Legacy DOM export function (keeping for backward compatibility)
+  const exportAsPng = useCallback(async (previewRef, filename = `mockup-${Date.now()}.png`) => {
+    console.log("🖼️ useExportStability: Legacy DOM export called");
+    
+    // For now, just return false to indicate this method is deprecated
+    console.warn("🖼️ Legacy DOM export is deprecated. Use exportOriginalMedia instead.");
+    return false;
+  }, []);
+
 
   // Cleanup effect
   useEffect(() => {
@@ -261,5 +313,5 @@ export function useExportStability() {
     };
   }, []);
 
-  return { isExporting, imagesReady, exportAsPng, attachNode };
+  return { isExporting, imagesReady, exportAsPng, exportOriginalMedia, attachNode };
 }
